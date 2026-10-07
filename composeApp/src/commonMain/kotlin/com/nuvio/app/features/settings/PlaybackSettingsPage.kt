@@ -60,6 +60,7 @@ import com.nuvio.app.features.player.ExternalPlayerPlatform
 import com.nuvio.app.features.player.IosAudioOutputMode
 import com.nuvio.app.features.player.IosHardwareDecoderMode
 import com.nuvio.app.features.player.localizedLabel
+import com.nuvio.app.features.player.pickSubtitleFontFile
 import com.nuvio.app.features.player.IosTargetPrimaries
 import com.nuvio.app.features.player.IosTargetTransfer
 import com.nuvio.app.features.player.PlayerSettingsRepository
@@ -297,6 +298,8 @@ private fun PlaybackSettingsSection(
     var showSubtitleTextColorDialog by remember { mutableStateOf(false) }
     var showSubtitleBackgroundColorDialog by remember { mutableStateOf(false) }
     var showSubtitleOutlineColorDialog by remember { mutableStateOf(false) }
+    var showSubtitleShadowColorDialog by remember { mutableStateOf(false) }
+    var showSubtitleFontDialog by remember { mutableStateOf(false) }
     var showExternalPlayerDialog by remember { mutableStateOf(false) }
     var showExternalPlayerAppDialog by remember { mutableStateOf(false) }
     var showReuseCacheDurationDialog by remember { mutableStateOf(false) }
@@ -655,6 +658,48 @@ private fun PlaybackSettingsSection(
                         onClick = { showSubtitleOutlineColorDialog = true },
                     )
                 }
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = "Sombra",
+                    description = "Añade una sombra suave detrás del texto",
+                    checked = subtitleStyle.shadowEnabled,
+                    enabled = subtitleRenderingEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = { enabled ->
+                        PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(shadowEnabled = enabled))
+                    },
+                )
+                if (subtitleStyle.shadowEnabled) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSliderRow(
+                        title = "Distancia de la sombra",
+                        value = subtitleStyle.shadowOffset,
+                        valueText = subtitleStyle.shadowOffset.toString(),
+                        valueRange = 1..8,
+                        step = 1,
+                        isTablet = isTablet,
+                        enabled = subtitleRenderingEnabled,
+                        onValueChange = { value ->
+                            PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(shadowOffset = value))
+                        },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = "Color de la sombra",
+                        description = subtitleColorLabel(subtitleStyle.shadowColor),
+                        enabled = subtitleRenderingEnabled,
+                        isTablet = isTablet,
+                        onClick = { showSubtitleShadowColorDialog = true },
+                    )
+                }
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsNavigationRow(
+                    title = "Fuente",
+                    description = subtitleStyle.fontName.ifBlank { "Predeterminada" },
+                    enabled = subtitleRenderingEnabled,
+                    isTablet = isTablet,
+                    onClick = { showSubtitleFontDialog = true },
+                )
                 val showLibassSettings = !isIos && (isDesktop || androidPlaybackEngine != AndroidPlaybackEngine.Libmpv)
                 if (showLibassSettings) {
                     SettingsGroupDivider(isTablet = isTablet)
@@ -1484,6 +1529,77 @@ private fun PlaybackSettingsSection(
             },
             onDismiss = { showSubtitleOutlineColorDialog = false },
         )
+    }
+
+    if (showSubtitleShadowColorDialog) {
+        SubtitleColorDialog(
+            title = "Color de la sombra",
+            colors = listOf(Color.Black.copy(alpha = 0.75f)) + SubtitleColorSwatches,
+            selectedColor = autoPlayPlayerSettings.subtitleStyle.shadowColor,
+            onColorSelected = { color ->
+                PlayerSettingsRepository.setSubtitleStyle(autoPlayPlayerSettings.subtitleStyle.copy(shadowColor = color))
+                showSubtitleShadowColorDialog = false
+            },
+            onDismiss = { showSubtitleShadowColorDialog = false },
+        )
+    }
+
+    if (showSubtitleFontDialog) {
+        val currentStyle = autoPlayPlayerSettings.subtitleStyle
+        val builtInFonts = listOf(
+            "Netflix Sans", "Arial", "Helvetica Neue", "Segoe UI", "Verdana",
+            "Tahoma", "Georgia", "Trebuchet MS", "Comic Sans MS", "Impact",
+        )
+        DialogSurface(
+            onDismissRequest = { showSubtitleFontDialog = false },
+            title = "Fuente de los subtítulos",
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DialogOption(
+                    text = "Predeterminada",
+                    selected = currentStyle.fontName.isBlank(),
+                    onClick = {
+                        PlayerSettingsRepository.setSubtitleStyle(currentStyle.copy(fontName = "", fontsDir = ""))
+                        showSubtitleFontDialog = false
+                    },
+                )
+                builtInFonts.forEach { name ->
+                    DialogOption(
+                        text = name,
+                        selected = currentStyle.fontName == name && currentStyle.fontsDir.isBlank(),
+                        onClick = {
+                            PlayerSettingsRepository.setSubtitleStyle(currentStyle.copy(fontName = name, fontsDir = ""))
+                            showSubtitleFontDialog = false
+                        },
+                    )
+                }
+                if (isDesktop) {
+                    DialogOption(
+                        text = "Cargar fuente desde un archivo (.ttf / .otf)…",
+                        description = if (currentStyle.fontsDir.isNotBlank()) "Fuente actual: ${currentStyle.fontName}" else null,
+                        selected = currentStyle.fontsDir.isNotBlank(),
+                        onClick = {
+                            pickSubtitleFontFile()?.let { picked ->
+                                PlayerSettingsRepository.setSubtitleStyle(
+                                    currentStyle.copy(fontName = picked.family, fontsDir = picked.directory),
+                                )
+                            }
+                            showSubtitleFontDialog = false
+                        },
+                    )
+                }
+            }
+
+            DialogButtons {
+                DialogButton(
+                    text = stringResource(Res.string.action_done),
+                    onClick = { showSubtitleFontDialog = false },
+                )
+            }
+        }
     }
 
     if (showReuseCacheDurationDialog) {

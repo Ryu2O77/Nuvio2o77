@@ -112,6 +112,13 @@ internal object NativePlayerBridge {
         useLibass: Boolean,
         stripSdh: Boolean,
     )
+    external fun applySubtitleExtras(
+        handle: Long,
+        fontName: String,
+        fontsDir: String,
+        shadowOffset: Float,
+        shadowColor: String,
+    )
     external fun warmupWebView2(controlsPageUrl: String): Boolean
     external fun shutdownWebView2Warmup()
     external fun setWindowsDisplaySleepInhibited(inhibited: Boolean): Boolean
@@ -164,12 +171,14 @@ internal object NativePlayerBridge {
         val platformDir = nativeDirectoryName(platform)
         findPackagedApplicationLibrary(platformDir, libraryName)?.let { packagedLibrary ->
             loadNativeRuntimeDependencies(platform, packagedLibrary.parentFile)
+            println("[NuvioNative] cargando player_bridge desde: " + packagedLibrary.absolutePath)
             System.load(packagedLibrary.absolutePath)
             return
         }
         findLocalBuildLibrary(platformDir, libraryName)?.let { localLibrary ->
             copyLocalRuntimeResources(platformDir, localLibrary.parentFile)
             loadNativeRuntimeDependencies(platform, localLibrary.parentFile)
+            println("[NuvioNative] cargando player_bridge desde: " + localLibrary.absolutePath)
             System.load(localLibrary.absolutePath)
             return
         }
@@ -183,6 +192,7 @@ internal object NativePlayerBridge {
         }
         val directory = DesktopCache.installVersionedFiles("native-player-bridge/$platformDir", files).toFile()
         loadNativeRuntimeDependencies(platform, directory)
+        println("[NuvioNative] cargando player_bridge desde: " + directory.resolve(libraryName).absolutePath)
         System.load(directory.resolve(libraryName).absolutePath)
     }
 

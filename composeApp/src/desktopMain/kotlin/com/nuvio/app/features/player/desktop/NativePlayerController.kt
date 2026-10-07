@@ -1097,6 +1097,26 @@ internal class NativePlayerController(
             useLibass = useLibass,
             stripSdh = style.stripSdh,
         )
+        runCatching {
+            // Con fondo visible se respeta el fondo; sin fondo, el color de sombra
+            // ocupa su lugar (mpv dibuja la sombra con el color de fondo).
+            val effectiveBackColor = when {
+                style.backgroundColor.alpha > 0f -> style.backgroundColor
+                style.shadowEnabled -> style.shadowColor
+                else -> Color.Transparent
+            }
+            val resolvedFont = SubtitleFontResolver.resolve(style.fontName, style.fontsDir)
+            NativePlayerBridge.applySubtitleExtras(
+                handle = handle,
+                fontName = resolvedFont,
+                fontsDir = style.fontsDir,
+                shadowOffset = if (style.shadowEnabled) style.shadowOffset.toFloat() else 0f,
+                shadowColor = effectiveBackColor.toMpvColorString(),
+            )
+            log.i { "applySubtitleExtras OK font='${style.fontName}' -> '$resolvedFont' shadow=${style.shadowEnabled}/${style.shadowOffset}" }
+        }.onFailure { error ->
+            log.w { "applySubtitleExtras FAILED: $error" }
+        }
     }
 
     private fun decodeTracks(readJson: (Long) -> String): List<NativeMpvTrack> {

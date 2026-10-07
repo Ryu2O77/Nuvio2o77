@@ -1209,6 +1209,26 @@ public:
         mpvApi().setProperty(mpv, "sid", MPV_FORMAT_INT64, &id);
     }
 
+    void applySubtitleExtras(
+        const std::string &fontName,
+        const std::string &fontsDir,
+        double shadowOffset,
+        const std::string &shadowColor
+    ) {
+        if (!fontsDir.empty()) {
+            setStringProperty("sub-fonts-dir", fontsDir);
+        }
+        setStringProperty("sub-font", fontName.empty() ? "sans-serif" : fontName);
+        // La sombra se dibuja con el color de fondo (BackColour) en modo outline-and-shadow.
+        std::string effectiveBackColor = shadowColor.empty() ? "#00000000" : shadowColor;
+        setStringProperty("sub-back-color", effectiveBackColor);
+        setStringProperty("sub-shadow-color", effectiveBackColor);
+        double shadow = std::max(0.0, std::min(10.0, shadowOffset));
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return;
+        mpvApi().setProperty(mpv, "sub-shadow-offset", MPV_FORMAT_DOUBLE, &shadow);
+    }
+
     void addSubtitleUrl(const std::string &url) {
         if (url.empty()) return;
         command({"sub-add", url, "select"});
@@ -2912,6 +2932,21 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleDelayMs(JNIEnv *, jobject, jlong handle, jint delayMs) {
     auto player = playerFromHandle(handle);
     if (player) player->setSubtitleDelayMs(delayMs);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleExtras(
+    JNIEnv *env, jobject, jlong handle,
+    jstring fontName, jstring fontsDir, jfloat shadowOffset, jstring shadowColor
+) {
+    auto player = playerFromHandle(handle);
+    if (!player) return;
+    player->applySubtitleExtras(
+        jstringToUtf8(env, fontName),
+        jstringToUtf8(env, fontsDir),
+        shadowOffset,
+        jstringToUtf8(env, shadowColor)
+    );
 }
 
 extern "C" JNIEXPORT void JNICALL

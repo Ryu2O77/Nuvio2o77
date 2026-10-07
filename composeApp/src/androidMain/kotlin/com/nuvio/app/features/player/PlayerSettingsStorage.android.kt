@@ -43,6 +43,7 @@ actual object PlayerSettingsStorage {
     private const val subtitleOutlineColorKey = "subtitle_outline_color"
     private const val subtitleOutlineEnabledKey = "subtitle_outline_enabled"
     private const val subtitleOutlineWidthKey = "subtitle_outline_width"
+    private const val subtitleExtrasKey = "subtitle_extras_json"
     private const val subtitleBoldKey = "subtitle_bold"
     private const val subtitleFontSizeSpKey = "subtitle_font_size_sp"
     private const val subtitleBottomOffsetKey = "subtitle_bottom_offset"
@@ -520,6 +521,16 @@ actual object PlayerSettingsStorage {
         preferences
             ?.edit()
             ?.putInt(ProfileScopedKey.of(subtitleOutlineWidthKey), width)
+            ?.apply()
+    }
+
+    actual fun loadSubtitleExtras(): String? =
+        preferences?.getString(ProfileScopedKey.of(subtitleExtrasKey), null)
+
+    actual fun saveSubtitleExtras(json: String) {
+        preferences
+            ?.edit()
+            ?.putString(ProfileScopedKey.of(subtitleExtrasKey), json)
             ?.apply()
     }
 

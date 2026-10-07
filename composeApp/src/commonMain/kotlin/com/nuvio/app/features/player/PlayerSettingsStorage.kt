@@ -51,6 +51,8 @@ internal expect object PlayerSettingsStorage {
     fun saveSubtitleOutlineEnabled(enabled: Boolean)
     fun loadSubtitleOutlineWidth(): Int?
     fun saveSubtitleOutlineWidth(width: Int)
+    fun loadSubtitleExtras(): String?
+    fun saveSubtitleExtras(json: String)
     fun loadSubtitleBold(): Boolean?
     fun saveSubtitleBold(enabled: Boolean)
     fun loadSubtitleFontSizeSp(): Int?
