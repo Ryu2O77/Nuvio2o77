@@ -684,6 +684,32 @@ private fun PlaybackSettingsSection(
                         },
                     )
                     SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSliderRow(
+                        title = "Suavidad de la sombra (requiere contorno)",
+                        value = subtitleStyle.shadowSoftness,
+                        valueText = subtitleStyle.shadowSoftness.toString(),
+                        valueRange = 0..10,
+                        step = 1,
+                        isTablet = isTablet,
+                        enabled = subtitleRenderingEnabled && subtitleStyle.outlineEnabled,
+                        onValueChange = { value ->
+                            PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(shadowSoftness = value))
+                        },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSliderRow(
+                        title = "Opacidad de la sombra",
+                        value = subtitleStyle.shadowOpacity,
+                        valueText = "${subtitleStyle.shadowOpacity}%",
+                        valueRange = 0..100,
+                        step = 5,
+                        isTablet = isTablet,
+                        enabled = subtitleRenderingEnabled,
+                        onValueChange = { value ->
+                            PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(shadowOpacity = value))
+                        },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
                         title = "Color de la sombra",
                         description = subtitleColorLabel(subtitleStyle.shadowColor),
@@ -1534,7 +1560,7 @@ private fun PlaybackSettingsSection(
     if (showSubtitleShadowColorDialog) {
         SubtitleColorDialog(
             title = "Color de la sombra",
-            colors = listOf(Color.Black.copy(alpha = 0.75f)) + SubtitleColorSwatches,
+            colors = SubtitleColorSwatches,
             selectedColor = autoPlayPlayerSettings.subtitleStyle.shadowColor,
             onColorSelected = { color ->
                 PlayerSettingsRepository.setSubtitleStyle(autoPlayPlayerSettings.subtitleStyle.copy(shadowColor = color))

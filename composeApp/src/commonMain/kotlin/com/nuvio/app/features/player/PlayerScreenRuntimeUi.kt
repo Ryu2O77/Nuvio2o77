@@ -1028,6 +1028,16 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
             persistAddonSubtitlePreference(addon)
             playerController?.setSubtitleUri(addon.url)
         }
+        "subtitleLoadLocalFile" -> {
+            val path = pickSubtitleFile() ?: return true
+            playerControlsLog.d { "subtitleLoadLocalFile ${playerControlLogContext()}" }
+            val localSubtitle = localSubtitleFor(path)
+            localSubtitles = localSubtitles.filterNot { it.id == localSubtitle.id } + localSubtitle
+            selectedAddonSubtitleId = localSubtitle.id
+            selectedSubtitleIndex = -1
+            useCustomSubtitles = true
+            playerController?.setSubtitleUri(path)
+        }
         "subtitleDelayDelta" -> setSubtitleDelay((subtitleDelayMs + value.toInt()).coerceIn(SUBTITLE_DELAY_MIN_MS, SUBTITLE_DELAY_MAX_MS))
         "subtitleDelayReset" -> setSubtitleDelay(0)
         "subtitleAutoSyncCapture" -> captureSubtitleAutoSyncTime()
@@ -1064,6 +1074,59 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
             SubtitleOutlineColorSwatches.getOrNull(value.toInt())?.let { color ->
                 PlayerSettingsRepository.setSubtitleStyle(
                     subtitleStyle.copy(outlineEnabled = true, outlineColor = color),
+                )
+            }
+        }
+        "subtitleShadowToggle" -> {
+            PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(shadowEnabled = !subtitleStyle.shadowEnabled))
+        }
+        "subtitleShadowOffsetDelta" -> {
+            PlayerSettingsRepository.setSubtitleStyle(
+                subtitleStyle.copy(
+                    shadowEnabled = true,
+                    shadowOffset = (subtitleStyle.shadowOffset + value.toInt()).coerceIn(1, 8),
+                ),
+            )
+        }
+        "subtitleShadowSoftnessDelta" -> {
+            PlayerSettingsRepository.setSubtitleStyle(
+                subtitleStyle.copy(
+                    shadowEnabled = true,
+                    shadowSoftness = (subtitleStyle.shadowSoftness + value.toInt()).coerceIn(0, 10),
+                ),
+            )
+        }
+        "subtitleShadowOpacityDelta" -> {
+            PlayerSettingsRepository.setSubtitleStyle(
+                subtitleStyle.copy(
+                    shadowEnabled = true,
+                    shadowOpacity = (subtitleStyle.shadowOpacity + value.toInt()).coerceIn(0, 100),
+                ),
+            )
+        }
+        "subtitleShadowColor" -> {
+            SubtitleShadowColorSwatches.getOrNull(value.toInt())?.let { color ->
+                PlayerSettingsRepository.setSubtitleStyle(
+                    subtitleStyle.copy(shadowEnabled = true, shadowColor = color),
+                )
+            }
+        }
+        "subtitleFontDelta" -> {
+            val choices = SubtitleFontChoices
+            val current = if (subtitleStyle.fontsDir.isBlank()) {
+                choices.indexOf(subtitleStyle.fontName).coerceAtLeast(0)
+            } else {
+                0
+            }
+            val next = ((current + value.toInt()) % choices.size + choices.size) % choices.size
+            PlayerSettingsRepository.setSubtitleStyle(
+                subtitleStyle.copy(fontName = choices[next], fontsDir = ""),
+            )
+        }
+        "subtitleFontPick" -> {
+            pickSubtitleFontFile()?.let { picked ->
+                PlayerSettingsRepository.setSubtitleStyle(
+                    subtitleStyle.copy(fontName = picked.family, fontsDir = picked.directory),
                 )
             }
         }

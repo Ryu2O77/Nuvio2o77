@@ -119,6 +119,8 @@ internal object NativePlayerBridge {
         shadowOffset: Float,
         shadowColor: String,
     )
+
+    external fun applySubtitleBlur(handle: Long, blur: Float)
     external fun warmupWebView2(controlsPageUrl: String): Boolean
     external fun shutdownWebView2Warmup()
     external fun setWindowsDisplaySleepInhibited(inhibited: Boolean): Boolean

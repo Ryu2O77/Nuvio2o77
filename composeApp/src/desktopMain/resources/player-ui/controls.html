@@ -265,6 +265,7 @@
             </section>
             <section class="subtitle-rail subtitle-options-rail">
               <div class="subtitle-rail-title" id="subtitleOptionsRailTitle">Subtitles</div>
+              <button class="panel-button" id="subtitleLoadFile" type="button">Cargar archivo...</button>
               <div class="track-list" id="addonSubtitleList"></div>
             </section>
             <section class="subtitle-rail subtitle-style-rail" id="subtitleStyleRail" hidden>
@@ -324,6 +325,47 @@
                       <button class="panel-button" id="outlineToggle" type="button">On</button>
                       <span class="style-label" id="outlineColorLabel">Outline Color</span>
                       <div class="swatch-row" id="outlineColorSwatches"></div>
+                    </div>
+                    <div class="style-section">
+                      <span class="style-label" id="shadowLabel">Sombra</span>
+                      <button class="panel-button" id="shadowToggle" type="button">On</button>
+                    </div>
+                    <div class="style-section">
+                      <span class="style-label" id="shadowOffsetLabel">Distancia de sombra</span>
+                      <div class="stepper">
+                        <button class="round-step" id="shadowOffsetMinus" type="button">-</button>
+                        <span class="stepper-value" id="shadowOffsetValue">3</span>
+                        <button class="round-step" id="shadowOffsetPlus" type="button">+</button>
+                      </div>
+                    </div>
+                    <div class="style-section">
+                      <span class="style-label" id="shadowSoftnessLabel">Suavidad de sombra</span>
+                      <div class="stepper">
+                        <button class="round-step" id="shadowSoftnessMinus" type="button">-</button>
+                        <span class="stepper-value" id="shadowSoftnessValue">3</span>
+                        <button class="round-step" id="shadowSoftnessPlus" type="button">+</button>
+                      </div>
+                    </div>
+                    <div class="style-section">
+                      <span class="style-label" id="shadowOpacityLabel">Opacidad de sombra</span>
+                      <div class="stepper">
+                        <button class="round-step" id="shadowOpacityMinus" type="button">-</button>
+                        <span class="stepper-value" id="shadowOpacityValue">75%</span>
+                        <button class="round-step" id="shadowOpacityPlus" type="button">+</button>
+                      </div>
+                    </div>
+                    <div class="style-section">
+                      <span class="style-label" id="shadowColorLabel">Color de sombra</span>
+                      <div class="swatch-row" id="shadowColorSwatches"></div>
+                    </div>
+                    <div class="style-section">
+                      <span class="style-label" id="fontLabel">Fuente</span>
+                      <div class="stepper">
+                        <button class="round-step" id="fontPrev" type="button">&lsaquo;</button>
+                        <span class="stepper-value" id="fontValue">Netflix Sans</span>
+                        <button class="round-step" id="fontNext" type="button">&rsaquo;</button>
+                      </div>
+                      <button class="panel-button" id="fontLoad" type="button">Cargar archivo...</button>
                     </div>
                   </div>
                   <div class="style-section">

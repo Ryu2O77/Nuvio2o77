@@ -84,6 +84,7 @@ const subtitleTrackList = document.getElementById("subtitleTrackList");
 const subtitlePanelTitle = document.getElementById("subtitlePanelTitle");
 const subtitleLanguageRailTitle = document.getElementById("subtitleLanguageRailTitle");
 const subtitleOptionsRailTitle = document.getElementById("subtitleOptionsRailTitle");
+const subtitleLoadFile = document.getElementById("subtitleLoadFile");
 const subtitleStyleRail = document.getElementById("subtitleStyleRail");
 const subtitleStyleRailTitle = document.getElementById("subtitleStyleRailTitle");
 const addonSubtitleList = document.getElementById("addonSubtitleList");
@@ -122,6 +123,27 @@ const textOpacityPlus = document.getElementById("textOpacityPlus");
 const outlineColorLabel = document.getElementById("outlineColorLabel");
 const outlineColorSwatches = document.getElementById("outlineColorSwatches");
 const subtitleStyleReset = document.getElementById("subtitleStyleReset");
+const shadowLabel = document.getElementById("shadowLabel");
+const shadowToggle = document.getElementById("shadowToggle");
+const shadowOffsetLabel = document.getElementById("shadowOffsetLabel");
+const shadowOffsetMinus = document.getElementById("shadowOffsetMinus");
+const shadowOffsetValue = document.getElementById("shadowOffsetValue");
+const shadowOffsetPlus = document.getElementById("shadowOffsetPlus");
+const shadowSoftnessLabel = document.getElementById("shadowSoftnessLabel");
+const shadowSoftnessMinus = document.getElementById("shadowSoftnessMinus");
+const shadowSoftnessValue = document.getElementById("shadowSoftnessValue");
+const shadowSoftnessPlus = document.getElementById("shadowSoftnessPlus");
+const shadowOpacityLabel = document.getElementById("shadowOpacityLabel");
+const shadowOpacityMinus = document.getElementById("shadowOpacityMinus");
+const shadowOpacityValue = document.getElementById("shadowOpacityValue");
+const shadowOpacityPlus = document.getElementById("shadowOpacityPlus");
+const shadowColorLabel = document.getElementById("shadowColorLabel");
+const shadowColorSwatches = document.getElementById("shadowColorSwatches");
+const fontLabel = document.getElementById("fontLabel");
+const fontPrev = document.getElementById("fontPrev");
+const fontValue = document.getElementById("fontValue");
+const fontNext = document.getElementById("fontNext");
+const fontLoad = document.getElementById("fontLoad");
 const sourceModal = document.getElementById("sourceModal");
 const sourcePanelTitle = document.getElementById("sourcePanelTitle");
 const sourceReloadButton = document.getElementById("sourceReloadButton");
@@ -346,9 +368,16 @@ let state = {
     bold: false,
     fontSizeSp: 18,
     bottomOffset: 20,
+    shadowEnabled: true,
+    shadowOffset: 3,
+    shadowSoftness: 3,
+    shadowOpacity: 75,
+    shadowColor: "#FF000000",
+    fontName: "Netflix Sans",
   },
   subtitleColorSwatches: [],
   subtitleOutlineColorSwatches: [],
+  subtitleShadowColorSwatches: [],
   closeModalsToken: 0,
   submitIntroContentKey: "",
   notificationMessage: "",
@@ -1409,6 +1438,22 @@ const renderSubtitleStylePanel = () => {
   subtitleStyleReset.textContent = state.resetDefaultsLabel || "Reset Defaults";
   renderSwatches(subtitleColorSwatches, state.subtitleColorSwatches, style.textColor, "subtitleTextColor");
   renderSwatches(outlineColorSwatches, state.subtitleOutlineColorSwatches, style.outlineColor, "subtitleOutlineColor");
+  shadowLabel.textContent = state.shadowLabel || "Sombra";
+  shadowToggle.textContent = style.shadowEnabled ? (state.onLabel || "On") : (state.offLabel || "Off");
+  shadowToggle.classList.toggle("primary", Boolean(style.shadowEnabled));
+  shadowOffsetLabel.textContent = state.shadowOffsetLabel || "Distancia de sombra";
+  shadowOffsetValue.textContent = String(Number(style.shadowOffset) || 0);
+  shadowSoftnessLabel.textContent = state.shadowSoftnessLabel || "Suavidad de sombra (requiere contorno)";
+  shadowSoftnessMinus.disabled = !style.outlineEnabled;
+  shadowSoftnessPlus.disabled = !style.outlineEnabled;
+  shadowSoftnessValue.textContent = String(Number(style.shadowSoftness) || 0);
+  shadowOpacityLabel.textContent = state.shadowOpacityLabel || "Opacidad de sombra";
+  shadowOpacityValue.textContent = String(Number(style.shadowOpacity) || 0) + "%";
+  shadowColorLabel.textContent = state.shadowColorLabel || "Color de sombra";
+  renderSwatches(shadowColorSwatches, state.subtitleShadowColorSwatches, style.shadowColor, "subtitleShadowColor");
+  fontLabel.textContent = state.fontLabel || "Fuente";
+  fontValue.textContent = style.fontName || "Predeterminada";
+  fontLoad.textContent = state.fontLoadLabel || "Cargar archivo...";
   renderAutoSyncCues();
 };
 
@@ -1416,6 +1461,7 @@ const renderSubtitleModal = () => {
   subtitlePanelTitle.textContent = state.subtitlesPanelTitle || "Subtitles";
   subtitleLanguageRailTitle.textContent = state.subtitleLanguagesLabel || "Languages";
   subtitleOptionsRailTitle.textContent = state.subtitlesPanelTitle || "Subtitles";
+  subtitleLoadFile.textContent = state.loadSubtitleFileLabel || "Cargar archivo...";
   subtitleStyleRailTitle.textContent = state.subtitleStyleTabLabel || "Style";
   renderSubtitleSelectionRails();
 };
@@ -2886,6 +2932,50 @@ outlineToggle.addEventListener("click", event => {
 boldToggle.addEventListener("click", event => {
   event.stopPropagation();
   send("subtitleBoldToggle", 0);
+});
+subtitleLoadFile.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleLoadLocalFile", 0);
+});
+shadowToggle.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowToggle", 0);
+});
+shadowOffsetMinus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowOffsetDelta", -1);
+});
+shadowOffsetPlus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowOffsetDelta", 1);
+});
+shadowOpacityMinus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowOpacityDelta", -5);
+});
+shadowOpacityPlus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowOpacityDelta", 5);
+});
+shadowSoftnessMinus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowSoftnessDelta", -1);
+});
+shadowSoftnessPlus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowSoftnessDelta", 1);
+});
+fontPrev.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleFontDelta", -1);
+});
+fontNext.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleFontDelta", 1);
+});
+fontLoad.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleFontPick", 0);
 });
 bottomOffsetMinus.addEventListener("click", event => {
   event.stopPropagation();

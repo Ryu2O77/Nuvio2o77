@@ -22,6 +22,7 @@ import com.nuvio.app.features.player.findPreferredAudioTrackIndex
 import com.nuvio.app.features.player.SUBTITLE_DELAY_MIN_MS
 import com.nuvio.app.features.player.SubtitleColorSwatches
 import com.nuvio.app.features.player.SubtitleOutlineColorSwatches
+import com.nuvio.app.features.player.SubtitleShadowColorSwatches
 import com.nuvio.app.features.player.SubtitleStyleState
 import com.nuvio.app.features.player.SubtitleTrack
 import com.nuvio.app.features.player.inferForcedSubtitleTrack
@@ -1029,21 +1030,38 @@ internal class NativePlayerController(
         applyPendingSubtitleSettings()
     }
 
+    private val subtitleLoadGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+
     override fun setSubtitleUri(url: String) {
         log.d { "setSubtitleUri ${url.toPlaybackLogKey()} handle=$handle" }
-        handle.takeIf { it != 0L }?.let { current ->
-            NativePlayerBridge.clearExternalSubtitles(current)
+        val current = handle.takeIf { it != 0L } ?: return
+        NativePlayerBridge.clearExternalSubtitles(current)
+        val generation = subtitleLoadGeneration.incrementAndGet()
+        if (!url.startsWith("http", ignoreCase = true)) {
             NativePlayerBridge.addSubtitleUrl(current, url)
+            return
         }
+        // Descarga y corrige comillas escapadas fuera del hilo de la interfaz.
+        Thread {
+            val local = SubtitleTextSanitizer.cleanedLocalCopy(url)
+            if (generation != subtitleLoadGeneration.get() || handle != current) return@Thread
+            log.i { "setSubtitleUri ${if (local != null) "corregido (comillas escapadas)" else "original"}" }
+            NativePlayerBridge.addSubtitleUrl(current, local ?: url)
+        }.apply {
+            isDaemon = true
+            name = "nuvio-subtitle-loader"
+        }.start()
     }
 
     override fun clearExternalSubtitle() {
         log.d { "clearExternalSubtitle handle=$handle" }
+        subtitleLoadGeneration.incrementAndGet()
         handle.takeIf { it != 0L }?.let(NativePlayerBridge::clearExternalSubtitles)
     }
 
     override fun clearExternalSubtitleAndSelect(trackIndex: Int) {
         val current = handle.takeIf { it != 0L } ?: return
+        subtitleLoadGeneration.incrementAndGet()
         val trackId = if (trackIndex < 0) {
             -1
         } else {
@@ -1097,25 +1115,43 @@ internal class NativePlayerController(
             useLibass = useLibass,
             stripSdh = style.stripSdh,
         )
+        // Con "Use custom styling" apagado (modo nativo) solo se conserva el tamaño:
+        // fuente, sombra y fondo vuelven a los valores por defecto de mpv.
+        val customStyling = !useLibass
         runCatching {
             // Con fondo visible se respeta el fondo; sin fondo, el color de sombra
             // ocupa su lugar (mpv dibuja la sombra con el color de fondo).
             val effectiveBackColor = when {
+                !customStyling -> Color.Transparent
                 style.backgroundColor.alpha > 0f -> style.backgroundColor
-                style.shadowEnabled -> style.shadowColor
+                style.shadowEnabled -> style.shadowColor.copy(alpha = style.shadowOpacity / 100f)
                 else -> Color.Transparent
             }
-            val resolvedFont = SubtitleFontResolver.resolve(style.fontName, style.fontsDir)
+            val resolvedFont = if (customStyling) {
+                SubtitleFontResolver.resolve(style.fontName, style.fontsDir)
+            } else {
+                ""
+            }
             NativePlayerBridge.applySubtitleExtras(
                 handle = handle,
                 fontName = resolvedFont,
                 fontsDir = style.fontsDir,
-                shadowOffset = if (style.shadowEnabled) style.shadowOffset.toFloat() else 0f,
+                shadowOffset = if (customStyling && style.shadowEnabled) style.shadowOffset.toFloat() else 0f,
                 shadowColor = effectiveBackColor.toMpvColorString(),
             )
             log.i { "applySubtitleExtras OK font='${style.fontName}' -> '$resolvedFont' shadow=${style.shadowEnabled}/${style.shadowOffset}" }
         }.onFailure { error ->
             log.w { "applySubtitleExtras FAILED: $error" }
+        }
+        runCatching {
+            // 0..10 -> sub-blur 0..3. Suaviza el borde de la sombra (y un poco el texto).
+            NativePlayerBridge.applySubtitleBlur(
+                handle = handle,
+                // Sin contorno, sub-blur difumina las letras mismas: solo se aplica con contorno activo.
+                blur = if (customStyling && style.shadowEnabled && style.outlineEnabled) style.shadowSoftness * 0.3f else 0f,
+            )
+        }.onFailure { error ->
+            log.w { "applySubtitleBlur FAILED: $error" }
         }
     }
 
@@ -1615,6 +1651,8 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean): String =
         append(',')
         appendJsonArrayField("subtitleOutlineColorSwatches", SubtitleOutlineColorSwatches.map { it.toStorageHexString() }) { append(it.toJsonString()) }
         append(',')
+        appendJsonArrayField("subtitleShadowColorSwatches", SubtitleShadowColorSwatches.map { it.toStorageHexString() }) { append(it.toJsonString()) }
+        append(',')
         appendJsonField("closeModalsToken", closeModalsToken)
         append(',')
         appendJsonField("submitIntroSuccessToken", submitIntroSuccessToken)
@@ -1850,6 +1888,18 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     appendJsonField("fontSizeSp", style.fontSizeSp)
     append(',')
     appendJsonField("bottomOffset", style.bottomOffset)
+    append(',')
+    appendJsonField("shadowEnabled", style.shadowEnabled)
+    append(',')
+    appendJsonField("shadowOffset", style.shadowOffset)
+    append(',')
+    appendJsonField("shadowSoftness", style.shadowSoftness)
+    append(',')
+    appendJsonField("shadowOpacity", style.shadowOpacity)
+    append(',')
+    appendJsonField("shadowColor", style.shadowColor.toStorageHexString())
+    append(',')
+    appendJsonField("fontName", style.fontName)
     append('}')
 }
 

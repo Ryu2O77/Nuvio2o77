@@ -1229,6 +1229,13 @@ public:
         mpvApi().setProperty(mpv, "sub-shadow-offset", MPV_FORMAT_DOUBLE, &shadow);
     }
 
+    void applySubtitleBlur(double blur) {
+        double value = std::max(0.0, std::min(20.0, blur));
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return;
+        mpvApi().setProperty(mpv, "sub-blur", MPV_FORMAT_DOUBLE, &value);
+    }
+
     void addSubtitleUrl(const std::string &url) {
         if (url.empty()) return;
         command({"sub-add", url, "select"});
@@ -1270,6 +1277,9 @@ public:
         double size = std::max(18.0, std::min(96.0, fontSize));
         int64_t position = std::max(0, std::min(150, subPos));
         double scale = useLibass ? size / 54.0 : 1.0;
+        // En modo libass el tamaño ya se aplica con sub-scale. Si sub-font-size también
+        // llevara "size", los subtítulos de texto (SRT) quedarían con size * size / 54.
+        double fontSizeProperty = useLibass ? 54.0 : size;
         double outline = std::max(0.0, std::min(8.0, outlineSize));
         std::string resolvedTextColor = textColor.empty() ? "#FFFFFFFF" : textColor;
         std::string resolvedBackgroundColor = backgroundColor.empty() ? "#00000000" : backgroundColor;
@@ -1307,7 +1317,7 @@ public:
             if (!mpv) return;
             if (modeChanged || sizeChanged) {
                 mpvApi().setProperty(mpv, "sub-scale", MPV_FORMAT_DOUBLE, &scale);
-                mpvApi().setProperty(mpv, "sub-font-size", MPV_FORMAT_DOUBLE, &size);
+                mpvApi().setProperty(mpv, "sub-font-size", MPV_FORMAT_DOUBLE, &fontSizeProperty);
             }
             if (modeChanged || positionChanged) {
                 mpvApi().setProperty(mpv, "sub-pos", MPV_FORMAT_INT64, &position);
@@ -1336,6 +1346,18 @@ public:
                 if (!mpv) return;
                 mpvApi().setProperty(mpv, "sub-outline-size", MPV_FORMAT_DOUBLE, &outline);
             }
+        } else if (modeChanged) {
+            // Estilo nativo: los subtítulos de texto (SRT) no deben conservar el estilo
+            // personalizado. Se restauran los valores por defecto de mpv; solo queda el tamaño.
+            setStringProperty("sub-color", "#FFFFFFFF");
+            setStringProperty("sub-back-color", "#00000000");
+            setStringProperty("sub-border-style", "outline-and-shadow");
+            setStringProperty("sub-outline-color", "#FF000000");
+            setStringProperty("sub-bold", "no");
+            double defaultOutline = 1.5;
+            std::lock_guard<std::mutex> lock(mpvMutex);
+            if (!mpv) return;
+            mpvApi().setProperty(mpv, "sub-outline-size", MPV_FORMAT_DOUBLE, &defaultOutline);
         }
         if (stripSdhChanged) {
             setStringProperty("sub-filter-sdh", stripSdh ? "yes" : "no");
@@ -2947,6 +2969,15 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleExtra
         shadowOffset,
         jstringToUtf8(env, shadowColor)
     );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleBlur(
+    JNIEnv *, jobject, jlong handle, jfloat blur
+) {
+    auto player = playerFromHandle(handle);
+    if (!player) return;
+    player->applySubtitleBlur(blur);
 }
 
 extern "C" JNIEXPORT void JNICALL

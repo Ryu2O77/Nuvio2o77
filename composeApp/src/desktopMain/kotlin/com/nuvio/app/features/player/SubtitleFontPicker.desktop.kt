@@ -7,8 +7,17 @@ import java.awt.Frame
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import javax.swing.SwingUtilities
 
 actual fun pickSubtitleFontFile(): PickedSubtitleFont? {
+    // Los eventos del reproductor llegan desde otro hilo: el diálogo debe abrirse en el hilo de AWT.
+    if (SwingUtilities.isEventDispatchThread()) return pickOnAwtThread()
+    var result: PickedSubtitleFont? = null
+    runCatching { SwingUtilities.invokeAndWait { result = pickOnAwtThread() } }
+    return result
+}
+
+private fun pickOnAwtThread(): PickedSubtitleFont? {
     val dialog = FileDialog(null as Frame?, "Seleccionar fuente (.ttf / .otf)", FileDialog.LOAD)
     dialog.isVisible = true
     val fileName = dialog.file ?: return null

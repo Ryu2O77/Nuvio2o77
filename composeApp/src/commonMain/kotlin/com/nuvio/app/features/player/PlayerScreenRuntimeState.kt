@@ -115,6 +115,7 @@ internal class PlayerScreenRuntime(
     var metaUiState: MetaDetailsUiState = MetaDetailsUiState()
     var addonsUiState: AddonsUiState = AddonsUiState()
     var addonSubtitles: List<AddonSubtitle> = emptyList()
+    var localSubtitles by mutableStateOf<List<AddonSubtitle>>(emptyList())
     var isLoadingAddonSubtitles: Boolean = false
 
     var horizontalSafePadding: Dp = 0.dp
