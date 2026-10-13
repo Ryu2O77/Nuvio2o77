@@ -717,7 +717,7 @@ private fun PlaybackSettingsSection(
                     SettingsSliderRow(
                         title = "Distancia de la sombra",
                         value = subtitleStyle.shadowOffset,
-                        valueText = subtitleStyle.shadowOffset.toString(),
+                        valueText = { it.toString() },
                         valueRange = 1..8,
                         step = 1,
                         isTablet = isTablet,
@@ -730,7 +730,7 @@ private fun PlaybackSettingsSection(
                     SettingsSliderRow(
                         title = "Suavidad de la sombra (requiere contorno)",
                         value = subtitleStyle.shadowSoftness,
-                        valueText = subtitleStyle.shadowSoftness.toString(),
+                        valueText = { it.toString() },
                         valueRange = 0..10,
                         step = 1,
                         isTablet = isTablet,
@@ -743,7 +743,7 @@ private fun PlaybackSettingsSection(
                     SettingsSliderRow(
                         title = "Opacidad de la sombra",
                         value = subtitleStyle.shadowOpacity,
-                        valueText = "${subtitleStyle.shadowOpacity}%",
+                        valueText = { "$it%" },
                         valueRange = 0..100,
                         step = 5,
                         isTablet = isTablet,
