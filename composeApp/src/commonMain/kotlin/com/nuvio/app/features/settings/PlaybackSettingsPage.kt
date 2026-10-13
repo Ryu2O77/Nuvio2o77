@@ -60,6 +60,7 @@ import com.nuvio.app.features.player.ExternalPlayerPlatform
 import com.nuvio.app.features.player.IosAudioOutputMode
 import com.nuvio.app.features.player.IosHardwareDecoderMode
 import com.nuvio.app.features.player.localizedLabel
+import com.nuvio.app.features.player.AnimeUpscalerMode
 import com.nuvio.app.features.player.pickSubtitleFontFile
 import com.nuvio.app.features.player.IosTargetPrimaries
 import com.nuvio.app.features.player.IosTargetTransfer
@@ -300,6 +301,7 @@ private fun PlaybackSettingsSection(
     var showSubtitleOutlineColorDialog by remember { mutableStateOf(false) }
     var showSubtitleShadowColorDialog by remember { mutableStateOf(false) }
     var showSubtitleFontDialog by remember { mutableStateOf(false) }
+    var showAnimeUpscalerDialog by remember { mutableStateOf(false) }
     var showExternalPlayerDialog by remember { mutableStateOf(false) }
     var showExternalPlayerAppDialog by remember { mutableStateOf(false) }
     var showReuseCacheDurationDialog by remember { mutableStateOf(false) }
@@ -1080,6 +1082,32 @@ private fun PlaybackSettingsSection(
             }
         }
 
+        if (isWindows) {
+            SettingsSection(
+                title = "Anime4K",
+                isTablet = isTablet,
+            ) {
+                SettingsGroup(isTablet = isTablet) {
+                    SettingsSwitchRow(
+                        title = "Activar Anime4K",
+                        description = "Mejora la imagen del anime con shaders. Usa más la GPU.",
+                        checked = autoPlayPlayerSettings.animeUpscalerEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setAnimeUpscalerEnabled,
+                    )
+                    if (autoPlayPlayerSettings.animeUpscalerEnabled) {
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsNavigationRow(
+                            title = "Modo de Anime4K",
+                            description = autoPlayPlayerSettings.animeUpscalerMode.label,
+                            isTablet = isTablet,
+                            onClick = { showAnimeUpscalerDialog = true },
+                        )
+                    }
+                }
+            }
+        }
+
         if (isIos) {
             SettingsSection(
                 title = stringResource(Res.string.settings_playback_ios_audio_output_section),
@@ -1568,6 +1596,37 @@ private fun PlaybackSettingsSection(
             },
             onDismiss = { showSubtitleShadowColorDialog = false },
         )
+    }
+
+    if (showAnimeUpscalerDialog) {
+        DialogSurface(
+            onDismissRequest = { showAnimeUpscalerDialog = false },
+            title = "Modo de Anime4K",
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AnimeUpscalerMode.entries.forEach { mode ->
+                    DialogOption(
+                        text = mode.label,
+                        description = mode.description,
+                        selected = autoPlayPlayerSettings.animeUpscalerMode == mode,
+                        onClick = {
+                            PlayerSettingsRepository.setAnimeUpscalerMode(mode)
+                            showAnimeUpscalerDialog = false
+                        },
+                    )
+                }
+            }
+
+            DialogButtons {
+                DialogButton(
+                    text = stringResource(Res.string.action_done),
+                    onClick = { showAnimeUpscalerDialog = false },
+                )
+            }
+        }
     }
 
     if (showSubtitleFontDialog) {

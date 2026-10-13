@@ -233,6 +233,10 @@ private fun NativePlayerSurface(
         controller.setResizeMode(resizeMode)
     }
 
+    LaunchedEffect(controller, playerSettings.animeUpscalerEnabled, playerSettings.animeUpscalerMode) {
+        controller.setAnimeUpscaler(playerSettings.animeUpscalerEnabled, playerSettings.animeUpscalerMode)
+    }
+
     LaunchedEffect(controller, playerControlsState) {
         controller.updateControls(playerControlsState)
         DesktopPlayerPictureInPicture.setWindowTitle(playerControlsState.pipWindowTitle)

@@ -44,6 +44,7 @@ actual object PlayerSettingsStorage {
     private const val subtitleOutlineEnabledKey = "subtitle_outline_enabled"
     private const val subtitleOutlineWidthKey = "subtitle_outline_width"
     private const val subtitleExtrasKey = "subtitle_extras_json"
+    private const val animeUpscalerKey = "anime_upscaler_json"
     private const val subtitleBoldKey = "subtitle_bold"
     private const val subtitleFontSizeSpKey = "subtitle_font_size_sp"
     private const val subtitleBottomOffsetKey = "subtitle_bottom_offset"
@@ -531,6 +532,16 @@ actual object PlayerSettingsStorage {
         preferences
             ?.edit()
             ?.putString(ProfileScopedKey.of(subtitleExtrasKey), json)
+            ?.apply()
+    }
+
+    actual fun loadAnimeUpscaler(): String? =
+        preferences?.getString(ProfileScopedKey.of(animeUpscalerKey), null)
+
+    actual fun saveAnimeUpscaler(json: String) {
+        preferences
+            ?.edit()
+            ?.putString(ProfileScopedKey.of(animeUpscalerKey), json)
             ?.apply()
     }
 

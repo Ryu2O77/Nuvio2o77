@@ -1236,6 +1236,10 @@ public:
         mpvApi().setProperty(mpv, "sub-blur", MPV_FORMAT_DOUBLE, &value);
     }
 
+    void setGlslShaders(const std::string &shaders) {
+        setStringProperty("glsl-shaders", shaders);
+    }
+
     void addSubtitleUrl(const std::string &url) {
         if (url.empty()) return;
         command({"sub-add", url, "select"});
@@ -2978,6 +2982,15 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleBlur(
     auto player = playerFromHandle(handle);
     if (!player) return;
     player->applySubtitleBlur(blur);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setGlslShaders(
+    JNIEnv *env, jobject, jlong handle, jstring shaders
+) {
+    auto player = playerFromHandle(handle);
+    if (!player) return;
+    player->setGlslShaders(jstringToUtf8(env, shaders));
 }
 
 extern "C" JNIEXPORT void JNICALL

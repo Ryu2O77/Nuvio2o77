@@ -1096,6 +1096,22 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
                 ),
             )
         }
+        "animeUpscalerCycle" -> {
+            val current = PlayerSettingsRepository.uiState.value
+            val lastIndex = AnimeUpscalerMode.entries.last().index
+            when {
+                !current.animeUpscalerEnabled -> {
+                    PlayerSettingsRepository.setAnimeUpscalerMode(AnimeUpscalerMode.FAST)
+                    PlayerSettingsRepository.setAnimeUpscalerEnabled(true)
+                }
+                current.animeUpscalerMode.index < lastIndex -> {
+                    PlayerSettingsRepository.setAnimeUpscalerMode(
+                        AnimeUpscalerMode.fromIndex(current.animeUpscalerMode.index + 1),
+                    )
+                }
+                else -> PlayerSettingsRepository.setAnimeUpscalerEnabled(false)
+            }
+        }
         "subtitleShadowOpacityDelta" -> {
             PlayerSettingsRepository.setSubtitleStyle(
                 subtitleStyle.copy(

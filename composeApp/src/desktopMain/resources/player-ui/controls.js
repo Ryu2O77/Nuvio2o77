@@ -449,6 +449,13 @@ let pendingSettingToastToken = 0;
 let timeLabelShowRemaining = false;
 let isPipLocked = false;
 const pipLockButton = document.getElementById("pipLockButton");
+const animeUpscalerButton = document.getElementById("animeUpscalerButton");
+const animeUpscalerBadge = document.getElementById("animeUpscalerBadge");
+let lastAnimeUpscalerLabel = null;
+animeUpscalerButton.addEventListener("click", event => {
+  event.stopPropagation();
+  send("animeUpscalerCycle", 0);
+});
 const pipLockOverlay = document.getElementById("pipLockOverlay");
 const pipLockBadge = document.getElementById("pipLockBadge");
 const pipLockLabel = () => String(state.lockLabel || "Lock player controls").trim();
@@ -2453,6 +2460,20 @@ const renderChrome = () => {
 
   setVisible(submitIntroButton, Boolean(state.showSubmitIntro));
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
+  const animeOn = Boolean(state.animeUpscalerEnabled);
+  const animeHint = (state.animeUpscalerLabel || "Anime4K") + " - clic para cambiar de modo";
+  animeUpscalerButton.style.opacity = animeOn ? "1" : "0.55";
+  animeUpscalerButton.style.background = animeOn ? "var(--theme-selected-surface)" : "";
+  animeUpscalerButton.setAttribute("aria-label", animeHint);
+  animeUpscalerButton.title = animeHint;
+  animeUpscalerBadge.hidden = !animeOn;
+  animeUpscalerBadge.textContent = animeOn ? (state.animeUpscalerModeLabel || "") : "";
+  if (state.animeUpscalerLabel) {
+    if (lastAnimeUpscalerLabel !== null && state.animeUpscalerLabel !== lastAnimeUpscalerLabel) {
+      showPlayerToast(state.animeUpscalerLabel, { durationMs: 1800 });
+    }
+    lastAnimeUpscalerLabel = state.animeUpscalerLabel;
+  }
   setVisible(sourcesButton, Boolean(state.showSources));
   setVisible(episodesButton, Boolean(state.showEpisodes));
   syncActionFocusState();

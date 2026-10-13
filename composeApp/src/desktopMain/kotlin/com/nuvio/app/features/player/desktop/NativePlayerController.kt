@@ -2,6 +2,8 @@ package com.nuvio.app.features.player.desktop
 
 import androidx.compose.ui.graphics.Color
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.player.AnimeShaderProvider
+import com.nuvio.app.features.player.AnimeUpscalerMode
 import com.nuvio.app.features.player.PlayerControlAddonSubtitleItem
 import com.nuvio.app.features.player.PlayerControlEpisodeItem
 import com.nuvio.app.features.player.PlayerControlFilterItem
@@ -72,6 +74,12 @@ internal class NativePlayerController(
 
         @Volatile
         var rememberedResizeMode: PlayerResizeMode = PlayerResizeMode.Fit
+
+        @Volatile
+        var rememberedAnimeUpscalerEnabled: Boolean = false
+
+        @Volatile
+        var rememberedAnimeUpscalerMode: AnimeUpscalerMode = AnimeUpscalerMode.FAST
     }
 
     private data class ReleaseCallback(
@@ -343,6 +351,7 @@ internal class NativePlayerController(
                                 "initialPositionMs=${pending.initialPositionMs}"
                         }
                         applyRememberedVolume()
+                        applyAnimeUpscaler(created, rememberedAnimeUpscalerEnabled, rememberedAnimeUpscalerMode)
                         updateControls(controlsState)
                         setResizeMode(rememberedResizeMode)
                         if (currentNowPlayingTitle.isNotEmpty() || currentArtworkUrl.isNotEmpty()) {
@@ -498,6 +507,28 @@ internal class NativePlayerController(
                 currentNowPlayingSubtitle,
                 currentArtworkUrl,
             )
+        }
+    }
+
+    fun setAnimeUpscaler(enabled: Boolean, mode: AnimeUpscalerMode) {
+        rememberedAnimeUpscalerEnabled = enabled
+        rememberedAnimeUpscalerMode = mode
+        handle.takeIf { it != 0L }?.let { current ->
+            applyAnimeUpscaler(current, enabled, mode)
+            // La página de controles solo se actualiza cuando cambia su "estructura";
+            // se fuerza un reenvío para que la etiqueta del modo se refresque.
+            lastSentControlsStructureKey = null
+            updateControls(controlsState)
+        }
+    }
+
+    private fun applyAnimeUpscaler(targetHandle: Long, enabled: Boolean, mode: AnimeUpscalerMode) {
+        val shaderPath = if (enabled) AnimeShaderProvider.getShaderPath(mode).orEmpty() else ""
+        runCatching {
+            NativePlayerBridge.setGlslShaders(targetHandle, shaderPath)
+            log.i { "Anime4K enabled=$enabled mode=$mode shader=${if (shaderPath.isEmpty()) "-" else shaderPath.substringAfterLast('/')}" }
+        }.onFailure { error ->
+            log.w { "Anime4K FAILED enabled=$enabled mode=$mode: $error" }
         }
     }
 
@@ -1632,6 +1663,19 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean): String =
         appendJsonField("useCustomSubtitles", useCustomSubtitles)
         append(',')
         appendJsonField("customSubtitleStylingEnabled", customSubtitleStylingEnabled)
+        append(',')
+        val animeSettings = com.nuvio.app.features.player.PlayerSettingsRepository.uiState.value
+        appendJsonField("animeUpscalerEnabled", animeSettings.animeUpscalerEnabled)
+        append(',')
+        appendJsonField(
+            "animeUpscalerLabel",
+            if (animeSettings.animeUpscalerEnabled) "Anime4K: ${animeSettings.animeUpscalerMode.label}" else "Anime4K: desactivado",
+        )
+        append(',')
+        appendJsonField(
+            "animeUpscalerModeLabel",
+            if (animeSettings.animeUpscalerEnabled) animeSettings.animeUpscalerMode.label else "",
+        )
         append(',')
         appendJsonField("subtitleDelayMs", subtitleDelayMs)
         append(',')
