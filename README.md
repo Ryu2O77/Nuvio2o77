@@ -1,3 +1,5 @@
+This Fork was made with AI for personal use.
+
 <div align="center">
 
   <img src="https://nuvio.tv/assets/nuvio-app-logo-wordmark.webp" alt="Nuvio" width="320" />
