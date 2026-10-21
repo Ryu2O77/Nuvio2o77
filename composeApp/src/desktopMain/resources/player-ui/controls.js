@@ -4027,6 +4027,11 @@ document.addEventListener("keydown", event => {
     send("subtitleDelayDelta", 100);
     return;
   }
+  if (!event.shiftKey && (event.code === "Comma" || event.code === "Period")) {
+    event.preventDefault();
+    send("subtitleDelayDelta", event.code === "Comma" ? -100 : 100);
+    return;
+  }
   if (event.code === "KeyM") {
     event.preventDefault();
     if (state.volumeLevel > 0) {
