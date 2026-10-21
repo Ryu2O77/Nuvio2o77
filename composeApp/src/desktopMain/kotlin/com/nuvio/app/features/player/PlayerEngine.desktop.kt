@@ -53,6 +53,7 @@ actual fun PlatformPlayerSurface(
     initialPositionMs: Long?,
     initialPositionRequestKey: String?,
     resizeMode: PlayerResizeMode,
+    playbackEngine: com.nuvio.app.features.player.AndroidPlaybackEngine?,
     useNativeController: Boolean,
     playerControlsState: PlayerControlsState,
     onPlayerControlsAction: (PlayerControlsAction) -> Boolean,
@@ -259,8 +260,8 @@ private fun NativePlayerSurface(
 
     LaunchedEffect(controller) {
         while (true) {
-            onSnapshot(controller.snapshot())
-            delay(500L)
+            if (!controller.isReleasing) onSnapshot(controller.snapshot())
+            delay(250L)
         }
     }
 
