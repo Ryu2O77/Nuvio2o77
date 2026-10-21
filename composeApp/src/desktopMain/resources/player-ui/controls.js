@@ -1348,6 +1348,9 @@ const renderSubtitleSelectionRails = () => {
   if (styleVisible) renderSubtitleStylePanel();
 };
 
+const subtitleDelayMinMs = -60000;
+const subtitleDelayMaxMs = 60000;
+
 const formatDelay = delayMs => {
   const value = Number(delayMs) || 0;
   const sign = value >= 0 ? "+" : "-";
@@ -4017,19 +4020,15 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
-  if (event.code === "KeyG") {
+  if (event.code === "KeyG" || event.code === "KeyH") {
     event.preventDefault();
-    send("subtitleDelayDelta", -100);
-    return;
-  }
-  if (event.code === "KeyH") {
-    event.preventDefault();
-    send("subtitleDelayDelta", 100);
-    return;
-  }
-  if (!event.shiftKey && (event.code === "Comma" || event.code === "Period")) {
-    event.preventDefault();
-    send("subtitleDelayDelta", event.code === "Comma" ? -100 : 100);
+    const delta = event.code === "KeyG" ? -100 : 100;
+    const nextDelay = Math.max(
+      subtitleDelayMinMs,
+      Math.min(subtitleDelayMaxMs, (Number(state.subtitleDelayMs) || 0) + delta),
+    );
+    showPlayerToast(`${state.subtitleDelayLabel || "Subtitle Delay"}: ${formatDelay(nextDelay)}`);
+    send("subtitleDelayDelta", delta);
     return;
   }
   if (event.code === "KeyM") {
