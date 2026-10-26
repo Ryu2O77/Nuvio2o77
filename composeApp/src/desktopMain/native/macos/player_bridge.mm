@@ -1726,6 +1726,12 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     setMpvOptionString(_mpv, "input-default-bindings", "yes");
     setMpvOptionString(_mpv, "input-vo-keyboard", "no");
     setMpvOptionString(_mpv, "keep-open", "yes");
+    // Los subtítulos usan toda la ventana como lienzo en vez del área del vídeo.
+    // Con vídeos que no son 16:9 (4:3, 21:9, etc.) mpv recortaba las líneas
+    // largas en los bordes del área visible, porque las confinaba a la zona
+    // entre las barras negras.
+    setMpvOptionString(_mpv, "sub-use-margins", "no");
+    setMpvOptionString(_mpv, "sub-ass-force-margins", "no");
     setMpvOptionString(_mpv, "volume-max", "200");
     setMpvOptionString(_mpv, "vo", "libmpv");
     setMpvOptionString(_mpv, "ao", "avfoundation,coreaudio,");

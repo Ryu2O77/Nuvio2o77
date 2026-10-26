@@ -1773,6 +1773,12 @@ private:
             setMpvOptionStringLocked("input-default-bindings", "yes");
             setMpvOptionStringLocked("input-vo-keyboard", "no");
             setMpvOptionStringLocked("keep-open", "yes");
+            // Los subtítulos usan toda la ventana como lienzo en vez del área del vídeo.
+            // Con vídeos que no son 16:9 (4:3, 21:9, etc.) mpv recortaba las líneas
+            // largas en los bordes del área visible, porque las confinaba a la zona
+            // entre las barras negras.
+            setMpvOptionStringLocked("sub-use-margins", "no");
+            setMpvOptionStringLocked("sub-ass-force-margins", "no");
             setMpvOptionStringLocked("volume-max", "200");
             setMpvOptionStringLocked("vo", "gpu-next,gpu,");
             if (nvidiaRtxSuperResolutionEnabled) {

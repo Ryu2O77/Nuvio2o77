@@ -1595,6 +1595,12 @@ JNIEXPORT jlong JNICALL NP(create)(
         mpv_set_option_string(m, "input-cursor", "no");
         mpv_set_option_string(m, "cursor-autohide", "no");
         mpv_set_option_string(m, "keep-open", "yes");
+        // Los subtítulos usan toda la ventana como lienzo en vez del área del vídeo.
+        // Con vídeos que no son 16:9 (4:3, 21:9, etc.) mpv recortaba las líneas
+        // largas en los bordes del área visible, porque las confinaba a la zona
+        // entre las barras negras.
+        mpv_set_option_string(m, "sub-use-margins", "no");
+        mpv_set_option_string(m, "sub-ass-force-margins", "no");
         mpv_set_option_string(m, "volume-max", "200");
         mpv_set_option_string(m, "idle", "yes");
         mpv_set_option_string(m, "vo", "gpu");
