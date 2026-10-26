@@ -1773,12 +1773,13 @@ private:
             setMpvOptionStringLocked("input-default-bindings", "yes");
             setMpvOptionStringLocked("input-vo-keyboard", "no");
             setMpvOptionStringLocked("keep-open", "yes");
-            // Los subtítulos usan toda la ventana como lienzo en vez del área del vídeo.
-            // Con vídeos que no son 16:9 (4:3, 21:9, etc.) mpv recortaba las líneas
-            // largas en los bordes del área visible, porque las confinaba a la zona
-            // entre las barras negras.
-            setMpvOptionStringLocked("sub-use-margins", "no");
-            setMpvOptionStringLocked("sub-ass-force-margins", "no");
+            // Los subtítulos deben poder dibujarse sobre toda la ventana. Si mpv/libass
+            // reciben los márgenes del vídeo (barras negras), cualquier línea que supere
+            // el ancho de la imagen se recorta justo en el borde del vídeo.
+            // - sub-ass-force-margins se usa en modo libass (sub-ass-override=scale).
+            // - sub-use-margins se usa en modo estilo propio (sub-ass-override=force).
+            setMpvOptionStringLocked("sub-use-margins", "yes");
+            setMpvOptionStringLocked("sub-ass-force-margins", "yes");
             setMpvOptionStringLocked("volume-max", "200");
             setMpvOptionStringLocked("vo", "gpu-next,gpu,");
             if (nvidiaRtxSuperResolutionEnabled) {
