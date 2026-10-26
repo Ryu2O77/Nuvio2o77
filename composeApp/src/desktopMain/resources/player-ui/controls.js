@@ -4179,7 +4179,94 @@ document.addEventListener("keydown", event => {
   send(command, 0);
 });
 
+// Arrastrar y soltar subtitulos sobre el reproductor.
+// WebView2 no le da la ruta del archivo a la pagina, asi que se manda el
+// contenido (base64); el puente nativo lo escribe en un archivo temporal y lo
+// carga en mpv con "sub-add".
+const droppedSubtitleExtensions = new Set(["ass", "ssa", "srt", "vtt", "sub"]);
+const droppedSubtitleMaxBytes = 16 * 1024 * 1024;
+
+const droppedSubtitleExtension = name => {
+  const clean = String(name || "");
+  const dot = clean.lastIndexOf(".");
+  return dot < 0 ? "" : clean.slice(dot + 1).toLowerCase();
+};
+
+const isDroppedSubtitleFile = file =>
+  !!file && droppedSubtitleExtensions.has(droppedSubtitleExtension(file.name));
+
+const readDroppedSubtitleBase64 = file => new Promise(resolve => {
+  const reader = new FileReader();
+  reader.onerror = () => resolve("");
+  reader.onload = () => {
+    const bytes = new Uint8Array(reader.result || new ArrayBuffer(0));
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunkSize));
+    }
+    try {
+      resolve(window.btoa(binary));
+    } catch (error) {
+      resolve("");
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+const postDroppedSubtitle = (name, data) => {
+  const webViewBridge = window.chrome && window.chrome.webview;
+  if (!webViewBridge) return false;
+  webViewBridge.postMessage({ type: "dropSubtitle", name, data });
+  return true;
+};
+
+const handleDroppedFiles = async dataTransfer => {
+  const files = Array.from((dataTransfer && dataTransfer.files) || []);
+  if (!files.length) return;
+  const subtitle = files.find(isDroppedSubtitleFile);
+  if (!subtitle) {
+    showPlayerToast("Suelta un subtitulo (.srt, .ass, .ssa, .vtt, .sub)", { icon: "icon-subs" });
+    return;
+  }
+  if (subtitle.size > droppedSubtitleMaxBytes) {
+    showPlayerToast("Subtitulo demasiado grande", { icon: "icon-subs" });
+    return;
+  }
+  const data = await readDroppedSubtitleBase64(subtitle);
+  if (!data) {
+    showPlayerToast("No se pudo leer el subtitulo", { icon: "icon-subs" });
+    return;
+  }
+  if (postDroppedSubtitle(subtitle.name, data)) {
+    showPlayerToast(`Subtitulo: ${subtitle.name}`, { icon: "icon-subs" });
+  }
+};
+
+const hasDroppedFiles = dataTransfer =>
+  !!dataTransfer && Array.from(dataTransfer.types || []).includes("Files");
+
+document.addEventListener("dragenter", event => {
+  if (!hasDroppedFiles(event.dataTransfer)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+}, true);
+
+document.addEventListener("dragover", event => {
+  if (!hasDroppedFiles(event.dataTransfer)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+}, true);
+
+document.addEventListener("drop", event => {
+  if (!hasDroppedFiles(event.dataTransfer)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void handleDroppedFiles(event.dataTransfer);
+}, true);
+
 setProgress(0, 0, 0);
 focusShortcutRoot();
 render();
 send("controlsReady", 0);
+

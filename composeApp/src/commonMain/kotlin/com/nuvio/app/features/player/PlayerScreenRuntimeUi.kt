@@ -910,6 +910,12 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
                 controlsActivityTick += 1
             }
         }
+        "subtitleDropped" -> {
+            // El puente nativo ya cargo y selecciono el subtitulo que se arrastro
+            // sobre el reproductor; refresca la lista para que aparezca como pista.
+            isUserExplicitSubtitleSelection = true
+            refreshTracks()
+        }
         "hideChrome" -> {
             controlsVisible = false
         }

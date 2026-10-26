@@ -1283,6 +1283,69 @@ public:
         command({"sub-add", url, "select"});
     }
 
+    // Subtitulo arrastrado sobre el reproductor: la pagina manda el contenido en
+    // base64 porque WebView2 no expone la ruta del archivo. Aqui se guarda en un
+    // archivo temporal con el mismo nombre y se carga en mpv.
+    bool addDroppedSubtitle(const std::string &name, const std::string &encodedData) {
+        std::string bytes = decodeBase64(encodedData);
+        if (bytes.empty()) return false;
+
+        std::string extension = ".srt";
+        size_t dot = name.find_last_of('.');
+        if (dot != std::string::npos && dot + 1 < name.size()) {
+            std::string candidate = name.substr(dot);
+            for (char &ch : candidate) {
+                ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            if (candidate == ".ass" || candidate == ".ssa" || candidate == ".srt" ||
+                candidate == ".vtt" || candidate == ".sub") {
+                extension = candidate;
+            }
+        }
+
+        std::wstring fileName;
+        for (wchar_t ch : toWide(name)) {
+            bool safe = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') ||
+                        (ch >= L'0' && ch <= L'9') || ch == L'.' || ch == L'-' ||
+                        ch == L'_' || ch == L' ';
+            fileName.push_back(safe ? ch : L'_');
+        }
+        if (fileName.size() > 80) fileName.resize(80);
+        if (fileName.empty()) fileName = L"subtitulo";
+        std::wstring wideExtension = toWide(extension);
+        if (fileName.size() < wideExtension.size() ||
+            _wcsicmp(fileName.c_str() + fileName.size() - wideExtension.size(),
+                     wideExtension.c_str()) != 0) {
+            fileName += wideExtension;
+        }
+
+        std::wstring path;
+        try {
+            path = localAppDataDirectory(L"Cache\\subtitulos-arrastrados") + L"\\" + fileName;
+        } catch (...) {
+            return false;
+        }
+
+        HANDLE file = CreateFileW(
+            path.c_str(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ,
+            nullptr,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr
+        );
+        if (file == INVALID_HANDLE_VALUE) return false;
+        DWORD written = 0;
+        bool ok = WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) != 0 &&
+                  written == static_cast<DWORD>(bytes.size());
+        CloseHandle(file);
+        if (!ok) return false;
+
+        command({"sub-add", toUtf8(path), "select"});
+        return true;
+    }
+
     void removeExternalSubtitles() {
         removeExternalSubtitleTracks();
         setStringProperty("sid", "no");
@@ -1975,6 +2038,15 @@ private:
             syncControls();
             return;
         }
+        if (type == "dropSubtitle") {
+            std::string name = extractJsonString(messageJson, L"name");
+            std::string data = extractJsonString(messageJson, L"data");
+            if (addDroppedSubtitle(name, data)) {
+                syncControls();
+                sendPlayerEvent("subtitleDropped", 1);
+            }
+            return;
+        }
         if (type == "setPlaybackState" || type == "setPlaybackStateQuiet") {
             bool shouldPlay = value >= 0.5;
             if (shouldPlay && isEnded()) {
@@ -1996,6 +2068,38 @@ private:
             return;
         }
         sendPlayerEvent(type, value);
+    }
+
+    static std::string decodeBase64(const std::string &input) {
+        std::string output;
+        output.reserve(input.size() * 3 / 4 + 4);
+        int value = 0;
+        int bits = -8;
+        for (unsigned char ch : input) {
+            int digit;
+            if (ch >= 'A' && ch <= 'Z') {
+                digit = ch - 'A';
+            } else if (ch >= 'a' && ch <= 'z') {
+                digit = ch - 'a' + 26;
+            } else if (ch >= '0' && ch <= '9') {
+                digit = ch - '0' + 52;
+            } else if (ch == '+') {
+                digit = 62;
+            } else if (ch == '/') {
+                digit = 63;
+            } else if (ch == '=') {
+                break;
+            } else {
+                continue;
+            }
+            value = (value << 6) + digit;
+            bits += 6;
+            if (bits >= 0) {
+                output.push_back(static_cast<char>((value >> bits) & 0xFF));
+                bits -= 8;
+            }
+        }
+        return output;
     }
 
     static std::string extractJsonString(const std::wstring &json, const std::wstring &field) {
