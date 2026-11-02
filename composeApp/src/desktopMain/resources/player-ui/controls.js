@@ -121,6 +121,36 @@ const fontSizeValue = document.getElementById("fontSizeValue");
 const fontSizePlus = document.getElementById("fontSizePlus");
 const outlineLabel = document.getElementById("outlineLabel");
 const outlineToggle = document.getElementById("outlineToggle");
+const subtitleFontLabel = document.getElementById("subtitleFontLabel");
+const subtitleFontRow = document.getElementById("subtitleFontRow");
+const subtitleFontName = document.getElementById("subtitleFontName");
+const subtitleFontModal = document.getElementById("subtitleFontModal");
+const subtitleFontModalTitle = document.getElementById("subtitleFontModalTitle");
+const subtitleFontList = document.getElementById("subtitleFontList");
+const subtitleFontHint = document.getElementById("subtitleFontHint");
+const subtitleFontError = document.getElementById("subtitleFontError");
+const subtitleFontImport = document.getElementById("subtitleFontImport");
+const subtitleFontDone = document.getElementById("subtitleFontDone");
+const backgroundColorLabel = document.getElementById("backgroundColorLabel");
+const backgroundColorSwatches = document.getElementById("backgroundColorSwatches");
+const backgroundOpacityLabel = document.getElementById("backgroundOpacityLabel");
+const backgroundOpacityValue = document.getElementById("backgroundOpacityValue");
+const backgroundOpacityMinus = document.getElementById("backgroundOpacityMinus");
+const backgroundOpacityPlus = document.getElementById("backgroundOpacityPlus");
+const outlineColorSection = document.getElementById("outlineColorSection");
+const shadowOpacitySection = document.getElementById("shadowOpacitySection");
+const shadowSizeSection = document.getElementById("shadowSizeSection");
+let fontPickerOpen = false;
+const shadowLabel = document.getElementById("shadowLabel");
+const shadowToggle = document.getElementById("shadowToggle");
+const shadowOpacityLabel = document.getElementById("shadowOpacityLabel");
+const shadowOpacityValue = document.getElementById("shadowOpacityValue");
+const shadowOpacityMinus = document.getElementById("shadowOpacityMinus");
+const shadowOpacityPlus = document.getElementById("shadowOpacityPlus");
+const shadowSizeLabel = document.getElementById("shadowSizeLabel");
+const shadowSizeValue = document.getElementById("shadowSizeValue");
+const shadowSizeMinus = document.getElementById("shadowSizeMinus");
+const shadowSizePlus = document.getElementById("shadowSizePlus");
 const boldLabel = document.getElementById("boldLabel");
 const boldToggle = document.getElementById("boldToggle");
 const bottomOffsetLabel = document.getElementById("bottomOffsetLabel");
@@ -136,27 +166,6 @@ const textOpacityPlus = document.getElementById("textOpacityPlus");
 const outlineColorLabel = document.getElementById("outlineColorLabel");
 const outlineColorSwatches = document.getElementById("outlineColorSwatches");
 const subtitleStyleReset = document.getElementById("subtitleStyleReset");
-const shadowLabel = document.getElementById("shadowLabel");
-const shadowToggle = document.getElementById("shadowToggle");
-const shadowOffsetLabel = document.getElementById("shadowOffsetLabel");
-const shadowOffsetMinus = document.getElementById("shadowOffsetMinus");
-const shadowOffsetValue = document.getElementById("shadowOffsetValue");
-const shadowOffsetPlus = document.getElementById("shadowOffsetPlus");
-const shadowSoftnessLabel = document.getElementById("shadowSoftnessLabel");
-const shadowSoftnessMinus = document.getElementById("shadowSoftnessMinus");
-const shadowSoftnessValue = document.getElementById("shadowSoftnessValue");
-const shadowSoftnessPlus = document.getElementById("shadowSoftnessPlus");
-const shadowOpacityLabel = document.getElementById("shadowOpacityLabel");
-const shadowOpacityMinus = document.getElementById("shadowOpacityMinus");
-const shadowOpacityValue = document.getElementById("shadowOpacityValue");
-const shadowOpacityPlus = document.getElementById("shadowOpacityPlus");
-const shadowColorLabel = document.getElementById("shadowColorLabel");
-const shadowColorSwatches = document.getElementById("shadowColorSwatches");
-const fontLabel = document.getElementById("fontLabel");
-const fontPrev = document.getElementById("fontPrev");
-const fontValue = document.getElementById("fontValue");
-const fontNext = document.getElementById("fontNext");
-const fontLoad = document.getElementById("fontLoad");
 const sourceModal = document.getElementById("sourceModal");
 const sourcePanelTitle = document.getElementById("sourcePanelTitle");
 const sourceReloadButton = document.getElementById("sourceReloadButton");
@@ -384,16 +393,9 @@ let state = {
     bold: false,
     fontSizeSp: 18,
     bottomOffset: 20,
-    shadowEnabled: true,
-    shadowOffset: 3,
-    shadowSoftness: 3,
-    shadowOpacity: 75,
-    shadowColor: "#FF000000",
-    fontName: "Netflix Sans",
   },
   subtitleColorSwatches: [],
   subtitleOutlineColorSwatches: [],
-  subtitleShadowColorSwatches: [],
   closeModalsToken: 0,
   submitIntroContentKey: "",
   notificationMessage: "",
@@ -467,13 +469,6 @@ let pendingSettingToastToken = 0;
 let timeLabelShowRemaining = false;
 let isPipLocked = false;
 const pipLockButton = document.getElementById("pipLockButton");
-const animeUpscalerButton = document.getElementById("animeUpscalerButton");
-const animeUpscalerBadge = document.getElementById("animeUpscalerBadge");
-let lastAnimeUpscalerLabel = null;
-animeUpscalerButton.addEventListener("click", event => {
-  event.stopPropagation();
-  send("animeUpscalerCycle", 0);
-});
 const pipLockOverlay = document.getElementById("pipLockOverlay");
 const pipLockBadge = document.getElementById("pipLockBadge");
 const pipLockLabel = () => String(state.lockLabel || "Lock player controls").trim();
@@ -1075,6 +1070,7 @@ const setModalVisibility = (modal, visible, animated = true) => {
 const closePlayerModal = (notifyDismiss = false, animated = true) => {
   const closingModal = activeModal;
   activeModal = "";
+  if (fontPickerOpen) setFontPickerOpen(false);
   modalElements.forEach(modal => {
     setModalVisibility(modal, false, animated);
   });
@@ -1250,6 +1246,7 @@ const subtitleSelectionOptions = () => normalizeItems(state.subtitleOptionItems)
   title: String(item.title || ""),
   metadata: String(item.metadata || ""),
   selected: Boolean(item.isSelected),
+  autoSynced: Boolean(item.isAutoSynced),
   index: Number(item.index) || 0,
 }));
 
@@ -1319,10 +1316,22 @@ const appendSubtitleOptionRow = option => {
   });
   const copy = document.createElement("span");
   copy.className = "subtitle-option-copy";
+  const sourceRow = document.createElement("span");
+  sourceRow.className = "subtitle-source-row";
   const source = document.createElement("span");
   source.className = "subtitle-source-chip";
   source.textContent = option.sourceLabel;
-  copy.appendChild(source);
+  sourceRow.appendChild(source);
+  if (option.autoSynced) {
+    const chip = document.createElement("span");
+    chip.className = "autosynced-chip";
+    chip.innerHTML = '<svg aria-hidden="true"><use href="#icon-sync"></use></svg>';
+    const text = document.createElement("span");
+    text.textContent = state.autoSyncedLabel || "Auto synced";
+    chip.appendChild(text);
+    sourceRow.appendChild(chip);
+  }
+  copy.appendChild(sourceRow);
   const title = document.createElement("span");
   title.className = "subtitle-option-title";
   title.textContent = option.title;
@@ -1387,9 +1396,6 @@ const renderSubtitleSelectionRails = () => {
   subtitleStyleRail.parentElement.classList.toggle("style-visible", styleVisible);
   if (styleVisible) renderSubtitleStylePanel();
 };
-
-const subtitleDelayMinMs = -60000;
-const subtitleDelayMaxMs = 60000;
 
 const formatDelay = delayMs => {
   const value = Number(delayMs) || 0;
@@ -1509,32 +1515,88 @@ const renderSubtitleStylePanel = () => {
   textOpacityValue.textContent = `${textAlpha}%`;
   outlineColorLabel.textContent = state.outlineColorLabel || "Outline Color";
   subtitleStyleReset.textContent = state.resetDefaultsLabel || "Reset Defaults";
-  renderSwatches(subtitleColorSwatches, state.subtitleColorSwatches, style.textColor, "subtitleTextColor");
-  renderSwatches(outlineColorSwatches, state.subtitleOutlineColorSwatches, style.outlineColor, "subtitleOutlineColor");
-  shadowLabel.textContent = state.shadowLabel || "Sombra";
+  subtitleFontLabel.textContent = state.fontLabel || "Font";
+  const activeFont = (state.subtitleFonts || []).find(font => font.id === (style.fontId || "default"));
+  subtitleFontName.textContent = activeFont ? activeFont.label : ((state.subtitleFonts || [])[0] || {}).label || "";
+  renderFontPicker();
+  shadowLabel.textContent = state.shadowLabel || "Drop shadow";
   shadowToggle.textContent = style.shadowEnabled ? (state.onLabel || "On") : (state.offLabel || "Off");
   shadowToggle.classList.toggle("primary", Boolean(style.shadowEnabled));
-  shadowOffsetLabel.textContent = state.shadowOffsetLabel || "Distancia de sombra";
-  shadowOffsetValue.textContent = String(Number(style.shadowOffset) || 0);
-  shadowSoftnessLabel.textContent = state.shadowSoftnessLabel || "Suavidad de sombra (requiere contorno)";
-  shadowSoftnessMinus.disabled = !style.outlineEnabled;
-  shadowSoftnessPlus.disabled = !style.outlineEnabled;
-  shadowSoftnessValue.textContent = String(Number(style.shadowSoftness) || 0);
-  shadowOpacityLabel.textContent = state.shadowOpacityLabel || "Opacidad de sombra";
-  shadowOpacityValue.textContent = String(Number(style.shadowOpacity) || 0) + "%";
-  shadowColorLabel.textContent = state.shadowColorLabel || "Color de sombra";
-  renderSwatches(shadowColorSwatches, state.subtitleShadowColorSwatches, style.shadowColor, "subtitleShadowColor");
-  fontLabel.textContent = state.fontLabel || "Fuente";
-  fontValue.textContent = style.fontName || "Predeterminada";
-  fontLoad.textContent = state.fontLoadLabel || "Cargar archivo...";
+  shadowOpacityLabel.textContent = state.shadowOpacityLabel || "Shadow opacity";
+  shadowOpacityValue.textContent = `${Number(style.shadowOpacity) || 0}%`;
+  shadowSizeLabel.textContent = state.shadowSizeLabel || "Shadow size";
+  shadowSizeValue.textContent = String(Number(style.shadowSize) || 1);
+  renderSwatches(subtitleColorSwatches, state.subtitleColorSwatches, style.textColor, "subtitleTextColor");
+  renderSwatches(outlineColorSwatches, state.subtitleColorSwatches, style.outlineColor, "subtitleOutlineColor");
+  backgroundColorLabel.textContent = state.backgroundColorLabel || "Background Color";
+  backgroundOpacityLabel.textContent = state.backgroundOpacityLabel || "Background opacity";
+  backgroundOpacityValue.textContent = `${Math.round((parseArgb(style.backgroundColor).alpha / 255) * 100)}%`;
+  renderSwatches(backgroundColorSwatches, state.subtitleColorSwatches, style.backgroundColor, "subtitleBackgroundColor");
+  outlineColorSection.hidden = !style.outlineEnabled;
+  shadowOpacitySection.hidden = !style.shadowEnabled;
+  shadowSizeSection.hidden = !style.shadowEnabled;
   renderAutoSyncCues();
+};
+
+const isBuiltInFont = id => ["default", "sans", "serif", "mono"].includes(id);
+const fontSampleFamily = id => ({ sans: "sans-serif", serif: "serif", mono: "monospace" })[id] || "inherit";
+
+const renderFontPicker = () => {
+  subtitleFontModalTitle.textContent = state.fontLabel || "Font";
+  subtitleFontImport.textContent = state.fontImportLabel || "Import font";
+  subtitleFontDone.textContent = state.doneLabel || "Done";
+  subtitleFontHint.textContent = state.fontImportHint || "";
+  subtitleFontError.textContent = state.fontImportError || "";
+  subtitleFontError.hidden = !state.subtitleFontImportFailed;
+  if (!fontPickerOpen) return;
+  const selectedId = (state.subtitleStyle || {}).fontId || "default";
+  subtitleFontList.textContent = "";
+  (state.subtitleFonts || []).forEach((font, index) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "font-option";
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `track-row${font.id === selectedId ? " selected" : ""}`;
+    row.addEventListener("click", event => {
+      event.stopPropagation();
+      send("subtitleFont", index);
+    });
+    const sample = document.createElement("span");
+    sample.className = "font-option-sample";
+    sample.style.fontFamily = fontSampleFamily(font.id);
+    sample.textContent = "Aa";
+    const label = document.createElement("span");
+    label.className = "track-label";
+    label.textContent = font.label;
+    row.append(sample, label);
+    if (font.id === selectedId) row.appendChild(buildCheckIcon());
+    wrapper.appendChild(row);
+    if (!isBuiltInFont(font.id)) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "panel-button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", (state.fontRemoveLabel || "Remove {name}").replace("{name}", font.label));
+      remove.addEventListener("click", event => {
+        event.stopPropagation();
+        send("subtitleFontRemove", index);
+      });
+      wrapper.appendChild(remove);
+    }
+    subtitleFontList.appendChild(wrapper);
+  });
+};
+
+const setFontPickerOpen = open => {
+  fontPickerOpen = open;
+  if (open) renderFontPicker();
+  setModalVisibility(subtitleFontModal, open);
 };
 
 const renderSubtitleModal = () => {
   subtitlePanelTitle.textContent = state.subtitlesPanelTitle || "Subtitles";
   subtitleLanguageRailTitle.textContent = state.subtitleLanguagesLabel || "Languages";
   subtitleOptionsRailTitle.textContent = state.subtitlesPanelTitle || "Subtitles";
-  subtitleLoadFile.textContent = state.loadSubtitleFileLabel || "Cargar archivo...";
   subtitleStyleRailTitle.textContent = state.subtitleStyleTabLabel || "Style";
   renderSubtitleSelectionRails();
 };
@@ -2737,20 +2799,6 @@ const renderChrome = () => {
 
   setVisible(submitIntroButton, Boolean(state.showSubmitIntro));
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
-  const animeOn = Boolean(state.animeUpscalerEnabled);
-  const animeHint = (state.animeUpscalerLabel || "Anime4K") + " - clic para cambiar de modo";
-  animeUpscalerButton.style.opacity = animeOn ? "1" : "0.55";
-  animeUpscalerButton.style.background = animeOn ? "var(--theme-selected-surface)" : "";
-  animeUpscalerButton.setAttribute("aria-label", animeHint);
-  animeUpscalerButton.title = animeHint;
-  animeUpscalerBadge.hidden = !animeOn;
-  animeUpscalerBadge.textContent = animeOn ? (state.animeUpscalerModeLabel || "") : "";
-  if (state.animeUpscalerLabel) {
-    if (lastAnimeUpscalerLabel !== null && state.animeUpscalerLabel !== lastAnimeUpscalerLabel) {
-      showPlayerToast(state.animeUpscalerLabel, { durationMs: 1800 });
-    }
-    lastAnimeUpscalerLabel = state.animeUpscalerLabel;
-  }
   setVisible(sourcesButton, Boolean(state.showSources));
   setVisible(episodesButton, Boolean(state.showEpisodes));
   const hasChapters = Array.isArray(state.chapters) && state.chapters.length > 0;
@@ -3221,6 +3269,10 @@ modalElements.forEach(modal => {
   });
 });
 
+subtitleLoadFile.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleLoadLocalFile", 0);
+});
 subtitleDelayMinus.addEventListener("click", event => {
   event.stopPropagation();
   send("subtitleDelayDelta", -100);
@@ -3270,50 +3322,6 @@ boldToggle.addEventListener("click", event => {
   event.stopPropagation();
   send("subtitleBoldToggle", 0);
 });
-subtitleLoadFile.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleLoadLocalFile", 0);
-});
-shadowToggle.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowToggle", 0);
-});
-shadowOffsetMinus.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowOffsetDelta", -1);
-});
-shadowOffsetPlus.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowOffsetDelta", 1);
-});
-shadowOpacityMinus.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowOpacityDelta", -5);
-});
-shadowOpacityPlus.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowOpacityDelta", 5);
-});
-shadowSoftnessMinus.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowSoftnessDelta", -1);
-});
-shadowSoftnessPlus.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleShadowSoftnessDelta", 1);
-});
-fontPrev.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleFontDelta", -1);
-});
-fontNext.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleFontDelta", 1);
-});
-fontLoad.addEventListener("click", event => {
-  event.stopPropagation();
-  send("subtitleFontPick", 0);
-});
 bottomOffsetMinus.addEventListener("click", event => {
   event.stopPropagation();
   send("subtitleBottomOffsetDelta", -5);
@@ -3325,14 +3333,60 @@ bottomOffsetPlus.addEventListener("click", event => {
 textOpacityMinus.addEventListener("click", event => {
   event.stopPropagation();
   const style = state.subtitleStyle || {};
-  const next = Math.max(0, Math.round((parseArgb(style.textColor).alpha / 255) * 100) - 10);
+  const next = Math.max(0, Math.round((parseArgb(style.textColor).alpha / 255) * 100) - 5);
   send("subtitleTextOpacity", next);
 });
 textOpacityPlus.addEventListener("click", event => {
   event.stopPropagation();
   const style = state.subtitleStyle || {};
-  const next = Math.min(100, Math.round((parseArgb(style.textColor).alpha / 255) * 100) + 10);
+  const next = Math.min(100, Math.round((parseArgb(style.textColor).alpha / 255) * 100) + 5);
   send("subtitleTextOpacity", next);
+});
+backgroundOpacityMinus.addEventListener("click", event => {
+  event.stopPropagation();
+  const style = state.subtitleStyle || {};
+  send("subtitleBackgroundOpacity", Math.max(0, Math.round((parseArgb(style.backgroundColor).alpha / 255) * 100) - 5));
+});
+backgroundOpacityPlus.addEventListener("click", event => {
+  event.stopPropagation();
+  const style = state.subtitleStyle || {};
+  send("subtitleBackgroundOpacity", Math.min(100, Math.round((parseArgb(style.backgroundColor).alpha / 255) * 100) + 5));
+});
+subtitleFontRow.addEventListener("click", event => {
+  event.stopPropagation();
+  setFontPickerOpen(true);
+});
+subtitleFontDone.addEventListener("click", event => {
+  event.stopPropagation();
+  setFontPickerOpen(false);
+});
+subtitleFontImport.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleFontImport", 0);
+});
+subtitleFontModal.addEventListener("click", event => {
+  event.stopPropagation();
+  if (event.target === subtitleFontModal) setFontPickerOpen(false);
+});
+shadowToggle.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowToggle", 0);
+});
+shadowOpacityMinus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowOpacityDelta", -5);
+});
+shadowOpacityPlus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowOpacityDelta", 5);
+});
+shadowSizeMinus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowSizeDelta", -1);
+});
+shadowSizePlus.addEventListener("click", event => {
+  event.stopPropagation();
+  send("subtitleShadowSizeDelta", 1);
 });
 subtitleStyleReset.addEventListener("click", event => {
   event.stopPropagation();
@@ -4273,15 +4327,14 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
-  if (event.code === "KeyG" || event.code === "KeyH") {
+  if (event.code === "KeyG") {
     event.preventDefault();
-    const delta = event.code === "KeyG" ? -100 : 100;
-    const nextDelay = Math.max(
-      subtitleDelayMinMs,
-      Math.min(subtitleDelayMaxMs, (Number(state.subtitleDelayMs) || 0) + delta),
-    );
-    showPlayerToast(`${state.subtitleDelayLabel || "Subtitle Delay"}: ${formatDelay(nextDelay)}`);
-    send("subtitleDelayDelta", delta);
+    send("subtitleDelayDelta", -100);
+    return;
+  }
+  if (event.code === "KeyH") {
+    event.preventDefault();
+    send("subtitleDelayDelta", 100);
     return;
   }
   if (event.code === "KeyM") {
@@ -4495,4 +4548,3 @@ setProgress(0, 0, 0);
 focusShortcutRoot();
 render();
 send("controlsReady", 0);
-
