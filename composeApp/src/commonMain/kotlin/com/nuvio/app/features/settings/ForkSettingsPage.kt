@@ -29,6 +29,7 @@ import org.jetbrains.compose.resources.stringResource
 
 private val prefetchCountOptions = listOf(5, 10, 15, 20)
 private val prefetchTtlOptions = listOf(3, 6, 12, 24, 48)
+private val nextEpisodeMinutesOptions = listOf(1, 3, 5, 10, 15)
 
 internal fun LazyListScope.forkSettingsContent(isTablet: Boolean) {
     item {
@@ -48,6 +49,7 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
     var showAnimeUpscalerDialog by remember { mutableStateOf(false) }
     var showPrefetchCountDialog by remember { mutableStateOf(false) }
     var showPrefetchTtlDialog by remember { mutableStateOf(false) }
+    var showNextEpisodeMinutesDialog by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(if (isTablet) 18.dp else 12.dp)) {
         if (isWindows) {
@@ -127,6 +129,56 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
                         ContinueWatchingStreamsPrefetcher.clearCache()
                         NuvioToastController.show("Caché de streams borrada")
                     },
+                )
+            }
+        }
+        SettingsSection(title = "Siguiente episodio", isTablet = isTablet) {
+            SettingsGroup(isTablet = isTablet) {
+                SettingsSwitchRow(
+                    title = "Precargar el siguiente episodio",
+                    description = "Empieza a descargar las fuentes del próximo episodio antes de que termine el actual.",
+                    checked = forkSettings.nextEpisodePrefetchEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = ForkSettingsRepository::setNextEpisodePrefetchEnabled,
+                )
+                if (forkSettings.nextEpisodePrefetchEnabled) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = "Minutos antes del final",
+                        description = "${forkSettings.nextEpisodePrefetchMinutes} minutos",
+                        isTablet = isTablet,
+                        onClick = { showNextEpisodeMinutesDialog = true },
+                    )
+                }
+            }
+        }
+    }
+
+    if (showNextEpisodeMinutesDialog) {
+        DialogSurface(
+            onDismissRequest = { showNextEpisodeMinutesDialog = false },
+            title = "Minutos antes del final",
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                nextEpisodeMinutesOptions.forEach { minutes ->
+                    DialogOption(
+                        text = "$minutes minutos",
+                        selected = forkSettings.nextEpisodePrefetchMinutes == minutes,
+                        onClick = {
+                            ForkSettingsRepository.setNextEpisodePrefetchMinutes(minutes)
+                            showNextEpisodeMinutesDialog = false
+                        },
+                    )
+                }
+            }
+
+            DialogButtons {
+                DialogButton(
+                    text = stringResource(Res.string.action_done),
+                    onClick = { showNextEpisodeMinutesDialog = false },
                 )
             }
         }

@@ -11,16 +11,19 @@ import com.nuvio.app.features.debrid.DebridStreamPresentation
 import com.nuvio.app.features.debrid.DirectDebridStreamPreparer
 import com.nuvio.app.features.debrid.LocalDebridAvailabilityService
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.plugins.PluginsUiState
 import com.nuvio.app.features.plugins.pluginContentId
 import com.nuvio.app.features.servers.ServerStreams
 import com.nuvio.app.features.streams.AddonStreamGroup
+import com.nuvio.app.features.streams.AddonStreamsCache
 import com.nuvio.app.features.streams.InstalledStreamAddonTarget
 import com.nuvio.app.features.streams.StreamAutoPlaySelector
 import com.nuvio.app.features.streams.StreamBadgePresentation
 import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
 import com.nuvio.app.features.streams.StreamItem
+import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamLoadCompletion
 import com.nuvio.app.features.streams.StreamParser
 import com.nuvio.app.features.streams.StreamsUiState
@@ -31,6 +34,8 @@ import com.nuvio.app.features.streams.supportsStream
 import com.nuvio.app.features.streams.toEmptyStateReason
 import com.nuvio.app.features.streams.toPluginProviderGroups
 import com.nuvio.app.features.streams.toStreamItem
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,6 +74,7 @@ object PlayerStreamsRepository {
         videoId: String,
         season: Int? = null,
         episode: Int? = null,
+        parentMetaId: String? = null,
         forceRefresh: Boolean = false,
     ) {
         fetchStreams(
@@ -77,6 +83,7 @@ object PlayerStreamsRepository {
             videoId = videoId,
             season = season,
             episode = episode,
+            parentMetaId = parentMetaId,
             forceRefresh = forceRefresh,
             stateFlow = _sourceState,
             requestKeyHolder = { sourceRequestKey },
@@ -91,6 +98,7 @@ object PlayerStreamsRepository {
         videoId: String,
         season: Int? = null,
         episode: Int? = null,
+        parentMetaId: String? = null,
         forceRefresh: Boolean = false,
     ) {
         fetchStreams(
@@ -99,6 +107,7 @@ object PlayerStreamsRepository {
             videoId = videoId,
             season = season,
             episode = episode,
+            parentMetaId = parentMetaId,
             forceRefresh = forceRefresh,
             stateFlow = _episodeStreamsState,
             requestKeyHolder = { episodeStreamsRequestKey },
@@ -184,6 +193,7 @@ object PlayerStreamsRepository {
         videoId: String,
         season: Int?,
         episode: Int?,
+        parentMetaId: String?,
         forceRefresh: Boolean,
         stateFlow: MutableStateFlow<StreamsUiState>,
         requestKeyHolder: () -> String?,
@@ -293,12 +303,58 @@ object PlayerStreamsRepository {
             "targets $panelName request=$requestKey installed=${installedAddons.size} " +
                 "compatible=${streamAddons.size} plugins=${pluginScrapers.size}"
         }
+
+        // Respuestas cacheadas de addons: se muestran al instante y la carga real las reemplaza.
+        ForkSettingsRepository.ensureLoaded()
+        val cacheTtlMs = ForkSettingsRepository.uiState.value.continueWatchingPrefetchTtlHours * 60L * 60L * 1_000L
+        val contentCacheKey = StreamLinkCacheRepository.contentKey(
+            type = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            season = season,
+            episode = episode,
+        )
+        val cachedPayloads = if (forceRefresh) {
+            emptyMap()
+        } else {
+            AddonStreamsCache.getPayloads(contentCacheKey, cacheTtlMs)
+        }
+        val cachedStreamsByAddonId: Map<String, List<StreamItem>> = if (cachedPayloads.isEmpty()) {
+            emptyMap()
+        } else {
+            streamAddons.mapNotNull { addon ->
+                val payload = cachedPayloads[addon.addonId] ?: return@mapNotNull null
+                val streams = runCatching {
+                    StreamParser.parse(
+                        payload = payload,
+                        addonName = addon.addonName,
+                        addonId = addon.addonId,
+                        addonLogo = addon.manifest.logoUrl,
+                    )
+                }.getOrNull()
+                if (streams.isNullOrEmpty()) null else addon.addonId to streams
+            }.toMap()
+        }
+
+        fun presentCachedGroup(group: AddonStreamGroup): AddonStreamGroup {
+            val badgeGroup = StreamBadgePresentation.apply(
+                groups = listOf(group),
+                rules = streamBadgeRules,
+            ).firstOrNull() ?: group
+            return DebridStreamPresentation.apply(
+                groups = listOf(badgeGroup),
+                settings = debridSettings,
+            ).firstOrNull() ?: badgeGroup
+        }
+
         val initialGroups = StreamAutoPlaySelector.orderAddonStreams(streamAddons.map { addon ->
-            AddonStreamGroup(
-                addonName = addon.addonName,
-                addonId = addon.addonId,
-                streams = emptyList(),
-                isLoading = true,
+            presentCachedGroup(
+                AddonStreamGroup(
+                    addonName = addon.addonName,
+                    addonId = addon.addonId,
+                    streams = cachedStreamsByAddonId[addon.addonId].orEmpty(),
+                    isLoading = true,
+                ),
             )
         } + pluginProviderGroups.map { providerGroup ->
             AddonStreamGroup(
@@ -317,6 +373,8 @@ object PlayerStreamsRepository {
         log.d { "state $panelName request=$requestKey stage=initial ${stateFlow.value.streamDiagnostics()}" }
 
         val job = scope.launch {
+            val freshPayloads = mutableMapOf<String, String>()
+            val freshPayloadsLock = SynchronizedObject()
             val installedAddonIds = streamAddons.map { it.addonId }.toSet()
             val installedAddonNames = installedAddonOrder.toSet()
             val pluginRemainingByAddonId = pluginProviderGroups
@@ -417,6 +475,9 @@ object PlayerStreamsRepository {
                             url = url,
                             forceRefresh = forceRefresh,
                         )
+                        synchronized(freshPayloadsLock) {
+                            freshPayloads[addon.addonId] = payload
+                        }
                         StreamParser.parse(
                             payload = payload,
                             addonName = displayName,
@@ -541,6 +602,10 @@ object PlayerStreamsRepository {
 
             for (availabilityJob in debridAvailabilityJobs) {
                 availabilityJob.join()
+            }
+            if (freshPayloads.isNotEmpty()) {
+                val snapshot = synchronized(freshPayloadsLock) { freshPayloads.toMap() }
+                runCatching { AddonStreamsCache.saveContent(contentCacheKey, snapshot) }
             }
             log.d { "complete $panelName request=$requestKey ${stateFlow.value.streamDiagnostics()}" }
             launch {

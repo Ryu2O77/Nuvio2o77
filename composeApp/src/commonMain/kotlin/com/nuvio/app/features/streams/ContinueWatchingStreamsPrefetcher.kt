@@ -83,8 +83,38 @@ internal object ContinueWatchingStreamsPrefetcher {
         }
     }
 
-    fun clearCache() {
-        activeJob?.cancel()
+    /**
+     * Precarga las respuestas de los addons del próximo episodio mientras todavía se está
+     * reproduciendo el actual. Así, al pasar de episodio, las fuentes ya están en caché.
+     */
+    fun prefetchNextEpisode(
+        type: String,
+        videoId: String,
+        parentMetaId: String,
+        season: Int,
+        episode: Int,
+    ) {
+        ForkSettingsRepository.ensureLoaded()
+        val settings = ForkSettingsRepository.uiState.value
+        if (!settings.nextEpisodePrefetchEnabled) return
+        val maxAgeMs = settings.continueWatchingPrefetchTtlHours * 60L * 60L * 1_000L
+        scope.launch {
+            runCatchingUnlessCancelled {
+                StreamsRepository.prefetchAddonStreams(
+                    type = type,
+                    videoId = videoId,
+                    parentMetaId = parentMetaId,
+                    season = season,
+                    episode = episode,
+                    maxAgeMs = maxAgeMs,
+                )
+            }.onFailure { error ->
+                log.d(error) { "Next episode prefetch failed for $videoId" }
+            }
+        }
+    }
+
+    fun clearCache() {        activeJob?.cancel()
         activeJob = null
         lastRequestKey = null
         AddonStreamsCache.clear()

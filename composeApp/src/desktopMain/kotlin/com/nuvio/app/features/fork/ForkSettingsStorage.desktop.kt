@@ -8,6 +8,8 @@ internal actual object ForkSettingsStorage {
     private const val prefetchEnabledKey = "continue_watching_prefetch_enabled"
     private const val prefetchCountKey = "continue_watching_prefetch_count"
     private const val prefetchTtlKey = "continue_watching_prefetch_ttl_hours"
+    private const val nextEpisodeEnabledKey = "next_episode_prefetch_enabled"
+    private const val nextEpisodeMinutesKey = "next_episode_prefetch_minutes"
 
     private val store = DesktopStorage.store("nuvio_fork_settings")
 
@@ -44,5 +46,19 @@ internal actual object ForkSettingsStorage {
 
     actual fun saveContinueWatchingPrefetchTtlHours(hours: Int) {
         store.putInt(prefetchTtlKey, hours)
+    }
+
+    actual fun loadNextEpisodePrefetchEnabled(): Boolean? =
+        if (store.contains(nextEpisodeEnabledKey)) store.getBoolean(nextEpisodeEnabledKey) else null
+
+    actual fun saveNextEpisodePrefetchEnabled(enabled: Boolean) {
+        store.putBoolean(nextEpisodeEnabledKey, enabled)
+    }
+
+    actual fun loadNextEpisodePrefetchMinutes(): Int? =
+        if (store.contains(nextEpisodeMinutesKey)) store.getInt(nextEpisodeMinutesKey) else null
+
+    actual fun saveNextEpisodePrefetchMinutes(minutes: Int) {
+        store.putInt(nextEpisodeMinutesKey, minutes)
     }
 }

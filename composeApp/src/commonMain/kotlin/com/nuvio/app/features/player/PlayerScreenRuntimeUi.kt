@@ -1423,6 +1423,7 @@ private fun PlayerScreenRuntime.prepareSourcesForPlayerControls(forceRefresh: Bo
         videoId = vid,
         season = activeSeasonNumber,
         episode = activeEpisodeNumber,
+        parentMetaId = parentMetaId,
         forceRefresh = forceRefresh,
     )
 }
@@ -1458,6 +1459,7 @@ private fun PlayerScreenRuntime.requestEpisodeStreamsForPlayerControls(
         videoId = episode.id,
         season = episode.season,
         episode = episode.episode,
+        parentMetaId = parentMetaId,
         forceRefresh = forceRefresh,
     )
     episodeStreamsPanelState = EpisodeStreamsPanelState(showStreams = true, selectedEpisode = episode)
@@ -2116,6 +2118,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                     videoId = vid,
                     season = activeSeasonNumber,
                     episode = activeEpisodeNumber,
+                    parentMetaId = parentMetaId,
                     forceRefresh = true,
                 )
             }
@@ -2150,6 +2153,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                 videoId = episode.id,
                 season = episode.season,
                 episode = episode.episode,
+                parentMetaId = parentMetaId,
             )
             episodeStreamsPanelState = EpisodeStreamsPanelState(showStreams = true, selectedEpisode = episode)
         },
@@ -2167,6 +2171,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                     videoId = episode.id,
                     season = episode.season,
                     episode = episode.episode,
+                    parentMetaId = parentMetaId,
                     forceRefresh = true,
                 )
             }

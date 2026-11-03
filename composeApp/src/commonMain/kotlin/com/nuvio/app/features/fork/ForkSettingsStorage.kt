@@ -19,4 +19,10 @@ internal expect object ForkSettingsStorage {
 
     fun loadContinueWatchingPrefetchTtlHours(): Int?
     fun saveContinueWatchingPrefetchTtlHours(hours: Int)
+
+    fun loadNextEpisodePrefetchEnabled(): Boolean?
+    fun saveNextEpisodePrefetchEnabled(enabled: Boolean)
+
+    fun loadNextEpisodePrefetchMinutes(): Int?
+    fun saveNextEpisodePrefetchMinutes(minutes: Int)
 }

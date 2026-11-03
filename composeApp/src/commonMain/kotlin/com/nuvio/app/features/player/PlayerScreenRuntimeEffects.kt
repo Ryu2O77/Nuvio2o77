@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.p2p.P2pStreamRequest
 import com.nuvio.app.features.p2p.P2pStreamingEngine
@@ -39,6 +40,7 @@ import com.nuvio.app.features.player.skip.intervalsAtSeekPositions
 import com.nuvio.app.features.servers.ServerPlayback
 import com.nuvio.app.features.servers.ServerStreams
 import com.nuvio.app.features.streams.BingeGroupCacheRepository
+import com.nuvio.app.features.streams.ContinueWatchingStreamsPrefetcher
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.hasLikelyExpiringPlaybackCredentials
@@ -893,6 +895,28 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         playerSettingsUiState.streamAutoPlayNextEpisodeEnabled,
         nextEpisodeCardDismissed,
     ) {
+        val nextEp = nextEpisodeInfo
+        if (nextEp != null && nextEp.hasAired == true) {
+            val prefetchKey = "${nextEp.videoId}|${nextEp.season}|${nextEp.episode}"
+            if (nextEpisodeCachePrefetchKey != prefetchKey) {
+                ForkSettingsRepository.ensureLoaded()
+                val forkSettings = ForkSettingsRepository.uiState.value
+                if (forkSettings.nextEpisodePrefetchEnabled) {
+                    val remainingMs = playbackSnapshot.durationMs - playbackSnapshot.positionMs
+                    val leadMs = forkSettings.nextEpisodePrefetchMinutes * 60_000L
+                    if (playbackSnapshot.durationMs > 0L && remainingMs > 0L && remainingMs <= leadMs) {
+                        nextEpisodeCachePrefetchKey = prefetchKey
+                        ContinueWatchingStreamsPrefetcher.prefetchNextEpisode(
+                            type = contentType ?: parentMetaType,
+                            videoId = nextEp.videoId,
+                            parentMetaId = parentMetaId,
+                            season = nextEp.season,
+                            episode = nextEp.episode,
+                        )
+                    }
+                }
+            }
+        }
         val shouldShow = nextEpisodeInfo != null && !nextEpisodeCardDismissed && isAtNextEpisodeThreshold()
         if (nextEpisodeAutoPlayAutomatic &&
             (!shouldShow || !playerSettingsUiState.streamAutoPlayNextEpisodeEnabled)
@@ -989,6 +1013,7 @@ internal fun PlayerScreenRuntime.tryRefreshCredentialedSourceAfterError(message:
                 videoId = currentVideoId,
                 season = season,
                 episode = episode,
+                parentMetaId = parentMetaId,
                 forceRefresh = true,
             )
 

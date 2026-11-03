@@ -310,6 +310,7 @@ internal fun PlayerScreenRuntime.switchToSource(
                         videoId = vid,
                         season = activeSeasonNumber,
                         episode = activeEpisodeNumber,
+                        parentMetaId = parentMetaId,
                         forceRefresh = true,
                     )
                 }
@@ -382,6 +383,7 @@ internal fun PlayerScreenRuntime.switchToEpisodeStream(
                     videoId = episode.id,
                     season = episode.season,
                     episode = episode.episode,
+                    parentMetaId = parentMetaId,
                     forceRefresh = true,
                 )
             },
@@ -528,6 +530,7 @@ internal fun PlayerScreenRuntime.openSourcesPanel() {
         videoId = vid,
         season = activeSeasonNumber,
         episode = activeEpisodeNumber,
+        parentMetaId = parentMetaId,
     )
     showSourcesPanel = true
     showEpisodesPanel = false

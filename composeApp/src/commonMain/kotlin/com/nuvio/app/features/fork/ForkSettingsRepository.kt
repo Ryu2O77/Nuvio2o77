@@ -10,6 +10,8 @@ data class ForkSettingsUiState(
     val continueWatchingPrefetchEnabled: Boolean = true,
     val continueWatchingPrefetchCount: Int = ForkSettingsRepository.DefaultPrefetchCount,
     val continueWatchingPrefetchTtlHours: Int = ForkSettingsRepository.DefaultPrefetchTtlHours,
+    val nextEpisodePrefetchEnabled: Boolean = true,
+    val nextEpisodePrefetchMinutes: Int = ForkSettingsRepository.DefaultNextEpisodePrefetchMinutes,
 )
 
 /**
@@ -22,6 +24,9 @@ object ForkSettingsRepository {
     const val MaxPrefetchCount: Int = 20
     const val MinPrefetchTtlHours: Int = 1
     const val MaxPrefetchTtlHours: Int = 72
+    const val DefaultNextEpisodePrefetchMinutes: Int = 5
+    const val MinNextEpisodePrefetchMinutes: Int = 1
+    const val MaxNextEpisodePrefetchMinutes: Int = 30
 
     private val _uiState = MutableStateFlow(ForkSettingsUiState())
     val uiState: StateFlow<ForkSettingsUiState> = _uiState.asStateFlow()
@@ -40,6 +45,10 @@ object ForkSettingsRepository {
             ),
             continueWatchingPrefetchTtlHours = clampTtl(
                 ForkSettingsStorage.loadContinueWatchingPrefetchTtlHours() ?: DefaultPrefetchTtlHours,
+            ),
+            nextEpisodePrefetchEnabled = ForkSettingsStorage.loadNextEpisodePrefetchEnabled() ?: true,
+            nextEpisodePrefetchMinutes = clampNextEpisodeMinutes(
+                ForkSettingsStorage.loadNextEpisodePrefetchMinutes() ?: DefaultNextEpisodePrefetchMinutes,
             ),
         )
     }
@@ -81,7 +90,25 @@ object ForkSettingsRepository {
         ForkSettingsStorage.saveContinueWatchingPrefetchTtlHours(clamped)
     }
 
+    fun setNextEpisodePrefetchEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (_uiState.value.nextEpisodePrefetchEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(nextEpisodePrefetchEnabled = enabled)
+        ForkSettingsStorage.saveNextEpisodePrefetchEnabled(enabled)
+    }
+
+    fun setNextEpisodePrefetchMinutes(minutes: Int) {
+        ensureLoaded()
+        val clamped = clampNextEpisodeMinutes(minutes)
+        if (_uiState.value.nextEpisodePrefetchMinutes == clamped) return
+        _uiState.value = _uiState.value.copy(nextEpisodePrefetchMinutes = clamped)
+        ForkSettingsStorage.saveNextEpisodePrefetchMinutes(clamped)
+    }
+
     private fun clampCount(count: Int): Int = count.coerceIn(MinPrefetchCount, MaxPrefetchCount)
 
     private fun clampTtl(hours: Int): Int = hours.coerceIn(MinPrefetchTtlHours, MaxPrefetchTtlHours)
+
+    private fun clampNextEpisodeMinutes(minutes: Int): Int =
+        minutes.coerceIn(MinNextEpisodePrefetchMinutes, MaxNextEpisodePrefetchMinutes)
 }
