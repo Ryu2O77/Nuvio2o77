@@ -1598,6 +1598,9 @@ const renderSubtitleModal = () => {
   subtitleLanguageRailTitle.textContent = state.subtitleLanguagesLabel || "Languages";
   subtitleOptionsRailTitle.textContent = state.subtitlesPanelTitle || "Subtitles";
   subtitleStyleRailTitle.textContent = state.subtitleStyleTabLabel || "Style";
+  if (subtitleLoadFile) {
+    subtitleLoadFile.style.display = state.subtitleLoadFileEnabled === false ? "none" : "";
+  }
   renderSubtitleSelectionRails();
 };
 
@@ -3271,6 +3274,7 @@ modalElements.forEach(modal => {
 
 subtitleLoadFile.addEventListener("click", event => {
   event.stopPropagation();
+  if (state.subtitleLoadFileEnabled === false) return;
   send("subtitleLoadLocalFile", 0);
 });
 subtitleDelayMinus.addEventListener("click", event => {
@@ -4501,6 +4505,7 @@ const postDroppedSubtitle = (name, data) => {
 };
 
 const handleDroppedFiles = async dataTransfer => {
+  if (state.subtitleDragDropEnabled === false) return;
   const files = Array.from((dataTransfer && dataTransfer.files) || []);
   if (!files.length) return;
   const subtitle = files.find(isDroppedSubtitleFile);
@@ -4526,18 +4531,21 @@ const hasDroppedFiles = dataTransfer =>
   !!dataTransfer && Array.from(dataTransfer.types || []).includes("Files");
 
 document.addEventListener("dragenter", event => {
+  if (state.subtitleDragDropEnabled === false) return;
   if (!hasDroppedFiles(event.dataTransfer)) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = "copy";
 }, true);
 
 document.addEventListener("dragover", event => {
+  if (state.subtitleDragDropEnabled === false) return;
   if (!hasDroppedFiles(event.dataTransfer)) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = "copy";
 }, true);
 
 document.addEventListener("drop", event => {
+  if (state.subtitleDragDropEnabled === false) return;
   if (!hasDroppedFiles(event.dataTransfer)) return;
   event.preventDefault();
   event.stopPropagation();

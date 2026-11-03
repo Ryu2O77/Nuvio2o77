@@ -2570,6 +2570,9 @@
     <string name="settings_group_watch">Media</string>
     <string name="settings_group_services">Services</string>
     <string name="settings_group_system">System</string>
+    <string name="settings_group_fork">Nuvio2o77</string>
+    <string name="compose_settings_page_fork">Nuvio2o77</string>
+    <string name="compose_settings_fork_description">Opciones exclusivas de este fork</string>
     <string name="compose_settings_page_layout">Layout</string>
     <string name="compose_settings_root_layout_description">Home, cards, details, streams, and navigation</string>
     <string name="compose_settings_root_about_description">App info, updates, and acknowledgements</string>

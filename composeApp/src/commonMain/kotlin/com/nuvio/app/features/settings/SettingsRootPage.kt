@@ -118,6 +118,14 @@ internal fun LazyListScope.settingsRootContent(
                             onPageClick = onPageClick,
                         )
                     }
+                    SettingsCategory.Fork -> {
+                        SettingsPageRow(
+                            page = SettingsPage.Fork,
+                            description = Res.string.compose_settings_fork_description,
+                            isTablet = isTablet,
+                            onPageClick = onPageClick,
+                        )
+                    }
                 }
             }
         }

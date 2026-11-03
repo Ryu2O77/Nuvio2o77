@@ -963,6 +963,31 @@ internal fun settingsSearchEntries(
         )
     }
 
+    val forkPage = stringResource(Res.string.compose_settings_page_fork)
+    val forkCategoryLabel = stringResource(SettingsCategory.Fork.labelRes)
+    addPage(
+        page = SettingsPage.Fork,
+        key = "fork",
+        title = forkPage,
+        description = stringResource(Res.string.compose_settings_fork_description),
+        category = forkCategoryLabel,
+    )
+    listOf(
+        PlaybackSearchRow("fork-anime4k", "Anime4K", "Shaders de mejora para anime", "Anime4K"),
+        PlaybackSearchRow("fork-subtitle-drag-drop", "Arrastrar y soltar subtítulos", "Permite soltar subtítulos sobre el reproductor", "Subtítulos externos"),
+        PlaybackSearchRow("fork-prefetch", "Precargar streams de Continuar viendo", "Descarga fuentes en segundo plano", "Continuar viendo"),
+    ).forEach { row ->
+        addRow(
+            page = SettingsPage.Fork,
+            key = row.key,
+            title = row.title,
+            description = row.description,
+            pageLabel = forkPage,
+            section = row.sectionOverride ?: forkPage,
+            category = forkCategoryLabel,
+        )
+    }
+
     addRow(
         page = SettingsPage.TraktAuthentication,
         key = "trakt-authentication",

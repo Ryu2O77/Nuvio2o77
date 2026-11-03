@@ -2,6 +2,7 @@ package com.nuvio.app.features.player.desktop
 
 import androidx.compose.ui.graphics.Color
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.player.AnimeShaderProvider
 import com.nuvio.app.features.player.AnimeUpscalerMode
 import com.nuvio.app.features.player.PlayerControlAddonSubtitleItem
@@ -1469,6 +1470,12 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("fetchSubtitlesLabel", fetchSubtitlesLabel)
         append(',')
         appendJsonField("subtitleDelayLabel", subtitleDelayLabel)
+        append(',')
+        ForkSettingsRepository.ensureLoaded()
+        val forkSettings = ForkSettingsRepository.uiState.value
+        appendJsonField("subtitleDragDropEnabled", forkSettings.subtitleDragDropEnabled)
+        append(',')
+        appendJsonField("subtitleLoadFileEnabled", forkSettings.subtitleLoadFileEnabled)
         append(',')
         appendJsonField("resetLabel", resetLabel)
         append(',')

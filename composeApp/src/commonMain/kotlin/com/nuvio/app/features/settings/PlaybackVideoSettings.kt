@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.features.player.AndroidLibmpvVideoOutput
 import com.nuvio.app.features.player.AndroidPlaybackEngine
-import com.nuvio.app.features.player.AnimeUpscalerMode
 import com.nuvio.app.features.player.IosHardwareDecoderMode
 import com.nuvio.app.features.player.localizedLabel
 import com.nuvio.app.features.player.IosTargetPrimaries
@@ -25,7 +24,6 @@ import com.nuvio.app.features.player.IosTargetTransfer
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.isDesktop
 import com.nuvio.app.isIos
-import com.nuvio.app.isWindows
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -41,7 +39,6 @@ internal fun PlaybackVideoSettings(
     var showIosHardwareDecoderDialog by remember { mutableStateOf(false) }
     var showIosTargetPrimariesDialog by remember { mutableStateOf(false) }
     var showIosTargetTransferDialog by remember { mutableStateOf(false) }
-    var showAnimeUpscalerDialog by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(if (isTablet) 18.dp else 12.dp)) {
         if (!isIos) {
             val decoderEnabled = !settings.externalPlayerEnabled
@@ -153,63 +150,6 @@ internal fun PlaybackVideoSettings(
                         onClick = { showIosTargetTransferDialog = true },
                     )
                 }
-            }
-        }
-
-        if (isWindows) {
-            SettingsSection(
-                title = "Anime4K",
-                isTablet = isTablet,
-            ) {
-                SettingsGroup(isTablet = isTablet) {
-                    SettingsSwitchRow(
-                        title = "Activar Anime4K",
-                        description = "Mejora la imagen del anime con shaders. Usa más la GPU.",
-                        checked = settings.animeUpscalerEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setAnimeUpscalerEnabled,
-                    )
-                    if (settings.animeUpscalerEnabled) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
-                            title = "Modo de Anime4K",
-                            description = settings.animeUpscalerMode.label,
-                            isTablet = isTablet,
-                            onClick = { showAnimeUpscalerDialog = true },
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    if (showAnimeUpscalerDialog) {
-        DialogSurface(
-            onDismissRequest = { showAnimeUpscalerDialog = false },
-            title = "Modo de Anime4K",
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AnimeUpscalerMode.entries.forEach { mode ->
-                    DialogOption(
-                        text = mode.label,
-                        description = mode.description,
-                        selected = settings.animeUpscalerMode == mode,
-                        onClick = {
-                            PlayerSettingsRepository.setAnimeUpscalerMode(mode)
-                            showAnimeUpscalerDialog = false
-                        },
-                    )
-                }
-            }
-
-            DialogButtons {
-                DialogButton(
-                    text = stringResource(Res.string.action_done),
-                    onClick = { showAnimeUpscalerDialog = false },
-                )
             }
         }
     }

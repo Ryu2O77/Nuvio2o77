@@ -803,6 +803,7 @@ private fun MobileSettingsScreen(
                     mdbListConnected = mdbListConnected,
                     onCommentsEnabledChange = TraktCommentsSettings::setEnabled,
                 )
+                SettingsPage.Fork -> forkSettingsContent(isTablet = false)
             }
         }
     }
@@ -1214,6 +1215,7 @@ private fun TabletSettingsScreen(
                             mdbListConnected = mdbListConnected,
                             onCommentsEnabledChange = TraktCommentsSettings::setEnabled,
                         )
+                        SettingsPage.Fork -> forkSettingsContent(isTablet = true)
                     }
                 }
                 if (isDesktop) {

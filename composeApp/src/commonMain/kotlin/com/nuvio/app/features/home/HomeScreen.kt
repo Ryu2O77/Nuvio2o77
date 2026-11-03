@@ -43,6 +43,7 @@ import com.nuvio.app.core.ui.withDuplicateSafeLazyKeys
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.servers.ServerRepository
+import com.nuvio.app.features.streams.ContinueWatchingStreamsPrefetcher
 import com.nuvio.app.features.addons.firstEnabledManifestError
 import com.nuvio.app.features.cloud.CloudLibraryContentType
 import com.nuvio.app.features.cloud.CloudLibraryRepository
@@ -53,6 +54,7 @@ import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.SeriesPrimaryAction
 import com.nuvio.app.features.details.seriesPrimaryAction
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
 import com.nuvio.app.features.home.components.HomeEmptyStateCard
@@ -565,6 +567,18 @@ fun HomeScreen(
         )
     }
     val hasContinueWatchingRows = continueWatchingItems.isNotEmpty() || upcomingItems.isNotEmpty()
+
+    val forkSettings by ForkSettingsRepository.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(
+        forkSettings.continueWatchingPrefetchEnabled,
+        forkSettings.continueWatchingPrefetchCount,
+        forkSettings.continueWatchingPrefetchTtlHours,
+        continueWatchingItems
+            .take(forkSettings.continueWatchingPrefetchCount)
+            .map { item -> "${item.parentMetaType}|${item.parentMetaId}|${item.videoId}|${item.seasonNumber}|${item.episodeNumber}" },
+    ) {
+        ContinueWatchingStreamsPrefetcher.prefetch(continueWatchingItems)
+    }
 
     LaunchedEffect(activeProfileId) {
         hasUserScrolledContinueWatching = false

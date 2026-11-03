@@ -11,16 +11,22 @@ import com.nuvio.app.features.debrid.DebridSettingsRepository
 import com.nuvio.app.features.debrid.DebridStreamPresentation
 import com.nuvio.app.features.debrid.LocalDebridAvailabilityService
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.plugins.pluginContentId
 import com.nuvio.app.features.plugins.PluginsUiState
 import com.nuvio.app.features.servers.ServerStreams
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -189,17 +195,7 @@ object StreamsRepository {
             return
         }
 
-        val streamAddons = installedAddons
-            .mapNotNull { addon ->
-                val manifest = addon.manifest ?: return@mapNotNull null
-                if (!manifest.supportsStream(type, videoId)) return@mapNotNull null
-
-                InstalledStreamAddonTarget(
-                    addonName = addon.displayTitle.ifBlank { manifest.name },
-                    addonId = addon.streamAddonInstanceId(manifest.id),
-                    manifest = manifest,
-                )
-            }
+        val streamAddons = if (isNativeServerRequest) emptyList() else installedStreamAddonTargets(type, videoId)
 
         log.d { "Found ${streamAddons.size} addons for stream type=$type id=$videoId" }
 
@@ -213,14 +209,59 @@ object StreamsRepository {
             return
         }
 
+        // Respuestas cacheadas de addons: se muestran al instante y la carga real las reemplaza.
+        ForkSettingsRepository.ensureLoaded()
+        val cacheTtlMs = ForkSettingsRepository.uiState.value.continueWatchingPrefetchTtlHours * 60L * 60L * 1_000L
+        val contentCacheKey = StreamLinkCacheRepository.contentKey(
+            type = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            season = season,
+            episode = episode,
+        )
+        val cachedPayloads = if (forceRefresh) {
+            emptyMap()
+        } else {
+            AddonStreamsCache.getPayloads(contentCacheKey, cacheTtlMs)
+        }
+        val cachedStreamsByAddonId: Map<String, List<StreamItem>> = if (cachedPayloads.isEmpty()) {
+            emptyMap()
+        } else {
+            streamAddons.mapNotNull { addon ->
+                val payload = cachedPayloads[addon.addonId] ?: return@mapNotNull null
+                val streams = runCatching {
+                    StreamParser.parse(
+                        payload = payload,
+                        addonName = addon.addonName,
+                        addonId = addon.addonId,
+                        addonLogo = addon.manifest.logoUrl,
+                    )
+                }.getOrNull()
+                if (streams.isNullOrEmpty()) null else addon.addonId to streams
+            }.toMap()
+        }
+
+        fun presentCachedGroup(group: AddonStreamGroup): AddonStreamGroup {
+            val badgeGroup = StreamBadgePresentation.apply(
+                groups = listOf(group),
+                rules = streamBadgeRules,
+            ).firstOrNull() ?: group
+            return DebridStreamPresentation.apply(
+                groups = listOf(badgeGroup),
+                settings = debridSettings,
+            ).firstOrNull() ?: badgeGroup
+        }
+
         // Initialise loading placeholders
         val installedAddonOrder = streamAddons.map { it.addonName }
         val initialGroups = StreamAutoPlaySelector.orderAddonStreams(streamAddons.map { addon ->
-            AddonStreamGroup(
-                addonName = addon.addonName,
-                addonId = addon.addonId,
-                streams = emptyList(),
-                isLoading = true,
+            presentCachedGroup(
+                AddonStreamGroup(
+                    addonName = addon.addonName,
+                    addonId = addon.addonId,
+                    streams = cachedStreamsByAddonId[addon.addonId].orEmpty(),
+                    isLoading = true,
+                ),
             )
         } + pluginProviderGroups.map { providerGroup ->
             AddonStreamGroup(
@@ -461,6 +502,9 @@ object StreamsRepository {
                 null
             }
 
+            val freshPayloads = mutableMapOf<String, String>()
+            val freshPayloadsLock = SynchronizedObject()
+
             streamAddons.forEach { addon ->
                 launch {
                     val url = buildAddonResourceUrl(
@@ -477,6 +521,7 @@ object StreamsRepository {
                             url = url,
                             forceRefresh = forceRefresh,
                         )
+                        synchronized(freshPayloadsLock) { freshPayloads[addon.addonId] = payload }
                         StreamParser.parse(
                             payload = payload,
                             addonName = displayName,
@@ -614,6 +659,12 @@ object StreamsRepository {
                 availabilityJob.join()
             }
 
+            if (freshPayloads.isNotEmpty()) {
+                val snapshot = synchronized(freshPayloadsLock) { freshPayloads.toMap() }
+                runCatching { AddonStreamsCache.saveContent(contentCacheKey, snapshot) }
+                    .onFailure { error -> log.d(error) { "Failed to store addon stream cache" } }
+            }
+
             launch {
                 DirectDebridStreamPreparer.prepare(
                     streams = _uiState.value.groups
@@ -643,6 +694,68 @@ object StreamsRepository {
             }
             timeoutJob?.cancel()
         }
+    }
+
+    internal fun installedStreamAddonTargets(type: String, videoId: String): List<InstalledStreamAddonTarget> {
+        if (ServerStreams.isNativeRequest(videoId)) return emptyList()
+        return AddonRepository.uiState.value.addons.enabledAddons().mapNotNull { addon ->
+            val manifest = addon.manifest ?: return@mapNotNull null
+            if (!manifest.supportsStream(type, videoId)) return@mapNotNull null
+
+            InstalledStreamAddonTarget(
+                addonName = addon.displayTitle.ifBlank { manifest.name },
+                addonId = addon.streamAddonInstanceId(manifest.id),
+                manifest = manifest,
+            )
+        }
+    }
+
+    /**
+     * Descarga en segundo plano las respuestas de los addons de streams para un contenido
+     * y las guarda en [AddonStreamsCache]. Se usa desde "Continuar viendo".
+     */
+    internal suspend fun prefetchAddonStreams(
+        type: String,
+        videoId: String,
+        parentMetaId: String?,
+        season: Int?,
+        episode: Int?,
+        maxAgeMs: Long,
+    ) {
+        if (maxAgeMs <= 0L) return
+        if (ServerStreams.isNativeRequest(videoId)) return
+
+        val addons = installedStreamAddonTargets(type, videoId)
+        if (addons.isEmpty()) return
+
+        val contentKey = StreamLinkCacheRepository.contentKey(
+            type = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            season = season,
+            episode = episode,
+        )
+        if (AddonStreamsCache.hasContent(contentKey, maxAgeMs)) return
+
+        val payloads = coroutineScope {
+            addons.map { addon ->
+                async {
+                    runCatchingUnlessCancelled {
+                        val url = buildAddonResourceUrl(
+                            manifestUrl = addon.manifest.transportUrl,
+                            resource = "stream",
+                            type = type,
+                            id = videoId,
+                        )
+                        fetchAddonResponseText(url = url, forceRefresh = false)
+                    }.getOrNull()?.let { payload -> addon.addonId to payload }
+                }
+            }.awaitAll()
+        }.filterNotNull().toMap()
+
+        if (payloads.isEmpty()) return
+        AddonStreamsCache.saveContent(contentKey, payloads)
+        log.d { "Prefetched ${payloads.size} addon payloads for $contentKey" }
     }
 
     fun selectFilter(addonId: String?) {

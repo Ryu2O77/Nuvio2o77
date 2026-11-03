@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
@@ -74,6 +75,7 @@ internal enum class SettingsCategory(
     Watch(Res.string.settings_group_watch, Icons.Rounded.PlayArrow),
     Services(Res.string.settings_group_services, Icons.Default.Link),
     System(Res.string.settings_group_system, Icons.Rounded.Settings),
+    Fork(Res.string.settings_group_fork, Icons.Default.AutoAwesome),
 }
 
 internal enum class SettingsPage(
@@ -261,6 +263,11 @@ internal enum class SettingsPage(
         category = SettingsCategory.Services,
         parentPage = Root,
     ),
+    Fork(
+        titleRes = Res.string.compose_settings_page_fork,
+        category = SettingsCategory.Fork,
+        parentPage = Root,
+    ),
 }
 
 internal val SettingsPage.opensInlineOnTablet: Boolean
@@ -303,6 +310,7 @@ internal val SettingsPage.icon: ImageVector
         SettingsPage.MdbListRatings -> Icons.Default.Link
         SettingsPage.Debrid -> Icons.Default.Link
         SettingsPage.TraktAuthentication -> Icons.Default.Sync
+        SettingsPage.Fork -> Icons.Default.AutoAwesome
         SettingsPage.PlaybackPlayer -> Icons.Default.SmartDisplay
         SettingsPage.PlaybackStreamSelection -> Icons.AutoMirrored.Filled.PlaylistPlay
         SettingsPage.PlaybackUpNext -> Icons.Default.QueuePlayNext

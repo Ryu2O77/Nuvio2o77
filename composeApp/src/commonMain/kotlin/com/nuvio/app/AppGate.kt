@@ -44,6 +44,7 @@ import com.nuvio.app.features.auth.AuthScreen
 import com.nuvio.app.features.collection.CollectionRepository
 import com.nuvio.app.features.collection.CollectionSyncService
 import com.nuvio.app.features.downloads.DownloadsRepository
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.membership.MemberAccessRepository
@@ -75,6 +76,7 @@ internal suspend fun warmProfileBoundRepositories() {
         ContinueWatchingPreferencesRepository.ensureLoaded()
         DownloadsRepository.ensureLoaded()
         EpisodeReleaseNotificationsRepository.ensureLoaded()
+        ForkSettingsRepository.ensureLoaded()
         HomeCatalogSettingsRepository.syncCatalogs(enabledAddons)
         LibraryRepository.ensureLoaded()
         P2pSettingsRepository.ensureLoaded()
