@@ -159,6 +159,40 @@ button:disabled {
   outline: none;
 }
 
+.subtitle-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 5.33%;
+  z-index: 4;
+  width: min(90%, 1100px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 90ms linear;
+  will-change: opacity;
+}
+
+.subtitle-overlay.visible {
+  opacity: 1;
+}
+
+.subtitle-overlay-text {
+  display: inline-block;
+  max-width: 100%;
+  padding: .12em .45em;
+  white-space: pre-line;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.player.error-active .subtitle-overlay,
+.player.opening-active .subtitle-overlay {
+  opacity: 0 !important;
+}
+
 .top-gradient,
 .bottom-gradient,
 .metadata,

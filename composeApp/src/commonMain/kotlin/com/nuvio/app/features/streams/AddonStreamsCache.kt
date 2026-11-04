@@ -101,6 +101,11 @@ internal object AddonStreamsCache {
     fun hasContent(contentKey: String, maxAgeMs: Long): Boolean =
         getPayloads(contentKey, maxAgeMs).isNotEmpty()
 
+    fun remove(contentKey: String) = synchronized(lock) {
+        StreamLinkCacheStorage.removeEntry(contentStorageKey(contentKey))
+        removeFromIndex(contentKey)
+    }
+
     fun clear() = synchronized(lock) {
         val index = loadIndex()
         index.entries.forEach { entry ->

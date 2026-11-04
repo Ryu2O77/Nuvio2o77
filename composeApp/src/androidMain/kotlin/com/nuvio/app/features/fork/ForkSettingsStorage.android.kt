@@ -11,6 +11,7 @@ internal actual object ForkSettingsStorage {
     private const val prefetchCountKey = "continue_watching_prefetch_count"
     private const val prefetchTtlKey = "continue_watching_prefetch_ttl_hours"
     private const val nextEpisodeEnabledKey = "next_episode_prefetch_enabled"
+    private const val nextEpisodeVideoEnabledKey = "next_episode_video_prefetch_enabled"
     private const val nextEpisodeMinutesKey = "next_episode_prefetch_minutes"
 
     private var preferences: SharedPreferences? = null
@@ -71,6 +72,15 @@ internal actual object ForkSettingsStorage {
 
     actual fun saveNextEpisodePrefetchEnabled(enabled: Boolean) {
         preferences?.edit()?.putBoolean(nextEpisodeEnabledKey, enabled)?.apply()
+    }
+
+    actual fun loadNextEpisodeVideoPrefetchEnabled(): Boolean? =
+        preferences?.let { prefs ->
+            if (prefs.contains(nextEpisodeVideoEnabledKey)) prefs.getBoolean(nextEpisodeVideoEnabledKey, false) else null
+        }
+
+    actual fun saveNextEpisodeVideoPrefetchEnabled(enabled: Boolean) {
+        preferences?.edit()?.putBoolean(nextEpisodeVideoEnabledKey, enabled)?.apply()
     }
 
     actual fun loadNextEpisodePrefetchMinutes(): Int? =

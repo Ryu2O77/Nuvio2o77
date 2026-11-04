@@ -291,6 +291,7 @@ data class PlayerControlsState(
     val useCustomSubtitles: Boolean = false,
     val customSubtitleStylingEnabled: Boolean = true,
     val subtitleStyle: SubtitleStyleState = SubtitleStyleState.DEFAULT,
+    val subtitleOverlayText: String = "",
     val subtitleDelayMs: Int = 0,
     val hasSelectedAddonSubtitle: Boolean = false,
     val subtitleAutoSyncCapturedPositionMs: Long = -1L,

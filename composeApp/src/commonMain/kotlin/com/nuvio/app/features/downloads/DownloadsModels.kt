@@ -49,6 +49,8 @@ data class DownloadItem(
     val downloadedBytes: Long = 0L,
     val totalBytes: Long? = null,
     val errorMessage: String? = null,
+    /** Descarga interna usada para precargar el video del próximo episodio. No se muestra en Descargas. */
+    val isPrefetchCache: Boolean = false,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
 ) {
@@ -80,11 +82,15 @@ data class DownloadItem(
 data class DownloadsUiState(
     val items: List<DownloadItem> = emptyList(),
 ) {
+    /** Descargas visibles para el usuario (excluye la caché interna del próximo episodio). */
+    val userItems: List<DownloadItem>
+        get() = items.filterNot { it.isPrefetchCache }
+
     val activeItems: List<DownloadItem>
-        get() = items.filter { it.status != DownloadStatus.Completed }
+        get() = userItems.filter { it.status != DownloadStatus.Completed }
 
     val completedItems: List<DownloadItem>
-        get() = items.filter { it.status == DownloadStatus.Completed }
+        get() = userItems.filter { it.status == DownloadStatus.Completed }
 }
 
 enum class DownloadEnqueueResult {

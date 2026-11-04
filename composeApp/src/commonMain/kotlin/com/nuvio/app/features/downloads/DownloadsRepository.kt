@@ -16,6 +16,7 @@ import org.jetbrains.compose.resources.getString
 
 object DownloadsRepository {
     private const val MaxDownloadAttempts = 3
+    private const val PrefetchCacheMaxAgeMs = 48L * 60L * 60L * 1_000L
 
     private val _uiState = MutableStateFlow(DownloadsUiState())
     val uiState: StateFlow<DownloadsUiState> = _uiState.asStateFlow()
@@ -87,6 +88,38 @@ object DownloadsRepository {
         }
     }
 
+    fun hasDownloadFor(
+        parentMetaId: String,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null,
+    ): Boolean {
+        ensureLoaded()
+        val normalizedParentMetaId = parentMetaId.trim()
+        return _uiState.value.items.any { item ->
+            item.parentMetaId == normalizedParentMetaId &&
+                item.seasonNumber == seasonNumber &&
+                item.episodeNumber == episodeNumber
+        }
+    }
+
+    /**
+     * Elimina la caché de video interna del próximo episodio, conservando solo los
+     * episodios indicados (por ejemplo, el que se está reproduciendo y el siguiente).
+     */
+    fun cleanupPrefetchCache(keepVideoIds: Set<String>) {
+        ensureLoaded()
+        removeDownloads(
+            _uiState.value.items.filter { item ->
+                item.isPrefetchCache && item.videoId !in keepVideoIds
+            },
+        )
+    }
+
+    fun clearPrefetchCache() {
+        ensureLoaded()
+        removeDownloads(_uiState.value.items.filter { it.isPrefetchCache })
+    }
+
     fun playableLocalFileUri(item: DownloadItem): String? {
         ensureLoaded()
         if (item.status != DownloadStatus.Completed) return null
@@ -125,6 +158,7 @@ object DownloadsRepository {
         episodeTitle: String?,
         episodeThumbnail: String?,
         stream: StreamItem,
+        isPrefetchCache: Boolean = false,
     ): DownloadEnqueueResult {
         ensureLoaded()
 
@@ -195,6 +229,7 @@ object DownloadsRepository {
             downloadedBytes = 0L,
             totalBytes = null,
             errorMessage = null,
+            isPrefetchCache = isPrefetchCache,
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
         )
@@ -299,13 +334,29 @@ object DownloadsRepository {
                 localUriNormalized
             }
 
-        _uiState.value = DownloadsUiState(normalized)
+        val cleaned = cleanStalePrefetchItems(normalized)
+        _uiState.value = DownloadsUiState(cleaned)
         notifyLiveStatusPlatform()
-        if (shouldPersistNormalized) {
+        if (shouldPersistNormalized || cleaned.size != normalized.size) {
             persist()
         }
-        normalized.filter { it.status == DownloadStatus.Downloading && it.id !in activeHandles }
+        cleaned.filter { it.status == DownloadStatus.Downloading && it.id !in activeHandles }
             .forEach(::startDownload)
+    }
+
+    private fun cleanStalePrefetchItems(items: List<DownloadItem>): List<DownloadItem> {
+        val now = DownloadsClock.nowEpochMs()
+        val (keep, stale) = items.partition { item ->
+            if (!item.isPrefetchCache) return@partition true
+            item.status != DownloadStatus.Paused &&
+                item.status != DownloadStatus.Failed &&
+                now - item.updatedAtEpochMs <= PrefetchCacheMaxAgeMs
+        }
+        stale.forEach { item ->
+            DownloadsPlatformDownloader.removeFile(item.localFileUri)
+            DownloadsPlatformDownloader.removePartialFile(item.fileName)
+        }
+        return keep
     }
 
     private fun startDownload(item: DownloadItem, attempt: Int = 1) {
@@ -350,6 +401,10 @@ object DownloadsRepository {
                 val current = _uiState.value.items.firstOrNull { it.id == item.id }
                 if (current?.status == DownloadStatus.Downloading && attempt < MaxDownloadAttempts) {
                     startDownload(current, attempt + 1)
+                    return@onFailure
+                }
+                if (current != null && current.isPrefetchCache) {
+                    removeDownloads(listOf(current))
                     return@onFailure
                 }
                 mutateItem(item.id) { current ->
@@ -402,7 +457,12 @@ object DownloadsRepository {
 
     private fun publish(items: List<DownloadItem>) {
         val previousStatuses = _uiState.value.items.associate { it.id to it.status }
-        if (items.any { it.status == DownloadStatus.Completed && previousStatuses[it.id].let { status -> status != null && status != DownloadStatus.Completed } }) {
+        if (items.any { item ->
+                !item.isPrefetchCache &&
+                    item.status == DownloadStatus.Completed &&
+                    previousStatuses[item.id].let { status -> status != null && status != DownloadStatus.Completed }
+            }
+        ) {
             _hasUnseenCompleted.value = true
         }
         _uiState.value = DownloadsUiState(
@@ -413,8 +473,20 @@ object DownloadsRepository {
 
     private fun notifyLiveStatusPlatform() {
         runCatching {
-            DownloadsLiveStatusPlatform.onItemsChanged(_uiState.value.items)
+            DownloadsLiveStatusPlatform.onItemsChanged(_uiState.value.items.filterNot { it.isPrefetchCache })
         }
+    }
+
+    private fun removeDownloads(items: List<DownloadItem>) {
+        if (items.isEmpty()) return
+        items.forEach { item ->
+            activeHandles.remove(item.id)?.cancel()
+            DownloadsPlatformDownloader.removeFile(item.localFileUri)
+            DownloadsPlatformDownloader.removePartialFile(item.fileName)
+        }
+        val ids = items.mapTo(mutableSetOf()) { it.id }
+        publish(_uiState.value.items.filterNot { it.id in ids })
+        persist()
     }
 
     private fun persist() {
@@ -571,7 +643,7 @@ private fun String.fileExtensionFromUrl(): String {
     }
 }
 
-private fun String.isSupportedDownloadUrl(): Boolean {
+internal fun String.isSupportedDownloadUrl(): Boolean {
     val normalized = trim().lowercase()
     if (normalized.startsWith("magnet:")) return false
     if (normalized.endsWith(".m3u8") || normalized.contains(".m3u8?")) return false

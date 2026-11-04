@@ -453,6 +453,11 @@ internal class NativePlayerController(
                 currentLevel = currentVolumeLevel,
                 rememberedLevel = rememberedVolumeLevel,
             ),
+            subtitleOverlayText = if (state.customSubtitleStylingEnabled) {
+                readStringProperty(current, "sub-text").replace("\r", "")
+            } else {
+                ""
+            },
         )
         currentVolumeLevel = stateWithVolume.volumeLevel ?: currentVolumeLevel
         controlsState = stateWithVolume
@@ -1176,27 +1181,36 @@ internal class NativePlayerController(
     }
 
     private fun applySubtitleStyle(handle: Long, style: SubtitleStyleState, useLibass: Boolean) {
+        // Desktop custom styling is rendered by the WebView overlay so background,
+        // outline and shadow can be controlled independently. Keep the native text
+        // invisible while that overlay owns the rendering; bitmap subtitles are not
+        // affected by these colour properties and still render normally.
+        val customOverlay = !useLibass
         NativePlayerBridge.applySubtitleStyle(
             handle = handle,
-            textColor = style.textColor.toMpvColorString(),
-            backgroundColor = style.backgroundColor.toMpvColorString(),
-            outlineColor = style.outlineColor.toMpvColorString(),
-            outlineSize = if (style.outlineEnabled) style.outlineWidth.toFloat() else 0f,
-            bold = style.bold,
+            textColor = if (customOverlay) "#00000000" else style.textColor.toMpvColorString(),
+            backgroundColor = if (customOverlay) "#00000000" else style.backgroundColor.toMpvColorString(),
+            outlineColor = if (customOverlay) "#00000000" else style.outlineColor.toMpvColorString(),
+            outlineSize = if (!customOverlay && style.outlineEnabled) style.outlineWidth.toFloat() else 0f,
+            bold = !customOverlay && style.bold,
             fontSize = style.toMpvSubtitleFontSize(),
             subPos = style.toMpvSubtitlePosition(),
             useLibass = useLibass,
             stripSdh = style.stripSdh,
         )
-          val shadowAlpha = if (style.appearance.shadowEnabled) (style.appearance.shadowOpacity * 255 / 100) else 0
-          NativePlayerBridge.setSubtitleAppearance(
-              handle = handle,
-              font = SubtitleFontResolver.mpvFontName(style.appearance.fontId),
-              fontsDir = SubtitleFontResolver.fontsDir(),
-              shadowColor = "#" + shadowAlpha.toHexByte() + "000000",
-              shadowOffset = if (style.appearance.shadowEnabled) style.appearance.shadowSize.toFloat() else 0f,
-          )
+        val nativeShadowEnabled = !customOverlay && style.appearance.shadowEnabled
+        val shadowAlpha = if (nativeShadowEnabled) (style.appearance.shadowOpacity * 255 / 100) else 0
+        NativePlayerBridge.setSubtitleAppearance(
+            handle = handle,
+            font = SubtitleFontResolver.mpvFontName(style.appearance.fontId),
+            fontsDir = SubtitleFontResolver.fontsDir(),
+            shadowColor = "#" + shadowAlpha.toHexByte() + "000000",
+            shadowOffset = if (nativeShadowEnabled) style.appearance.shadowSize.toFloat() else 0f,
+        )
     }
+
+    private fun readStringProperty(handle: Long, name: String): String =
+        runCatching { NativePlayerBridge.stringProperty(handle, name) }.getOrDefault("")
 
     private fun decodeTracks(readJson: (Long) -> String): List<NativeMpvTrack> {
         val current = handle.takeIf { it != 0L } ?: return emptyList()
@@ -1747,6 +1761,8 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         append(',')
         appendJsonField("subtitleStyle", subtitleStyle)
         append(',')
+        appendJsonField("subtitleOverlayText", subtitleOverlayText)
+        append(',')
         appendJsonArrayField("subtitleColorSwatches", SubtitleColorSwatches.map { it.toStorageHexString() }) { append(it.toJsonString()) }
         append(',')
         appendJsonArrayField("subtitleOutlineColorSwatches", SubtitleOutlineColorSwatches.map { it.toStorageHexString() }) { append(it.toJsonString()) }
@@ -2032,9 +2048,15 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     append('{')
     appendJsonField("textColor", style.textColor.toStorageHexString())
     append(',')
+    appendJsonField("backgroundColor", style.backgroundColor.toStorageHexString())
+    append(',')
+    appendJsonField("backgroundRadius", style.appearance.backgroundRadius)
+    append(',')
     appendJsonField("outlineColor", style.outlineColor.toStorageHexString())
     append(',')
     appendJsonField("outlineEnabled", style.outlineEnabled)
+    append(',')
+    appendJsonField("outlineWidth", style.outlineWidth)
     append(',')
     appendJsonField("bold", style.bold)
     append(',')

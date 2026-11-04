@@ -288,6 +288,15 @@ private fun NativePlayerSurface(
         }
     }
 
+    // The WebView subtitle overlay reads mpv's current cue text. Poll faster than
+    // the playback snapshot so subtitles appear/disappear close to their timing.
+    LaunchedEffect(controller) {
+        while (true) {
+            if (!controller.isReleasing) controller.updateControls(latestPlayerControlsState.value)
+            delay(100L)
+        }
+    }
+
     val pipChanges by DesktopPlayerPictureInPicture.changes.collectAsState()
     val isInPip = pipChanges >= 0 && DesktopPlayerPictureInPicture.isEnabled
 

@@ -1,4 +1,6 @@
 const root = document.getElementById("playerRoot");
+const subtitleOverlay = document.getElementById("subtitleOverlay");
+const subtitleOverlayText = document.getElementById("subtitleOverlayText");
 const seek = document.getElementById("seek");
 const positionLabel = document.getElementById("position");
 const durationLabel = document.getElementById("duration");
@@ -2754,6 +2756,69 @@ const finishChromePointerInteraction = event => {
   noteChromeActivity(true);
 };
 
+const subtitleFontFamily = id => {
+  switch (id) {
+    case "sans":
+      return "sans-serif";
+    case "serif":
+      return "serif";
+    case "mono":
+      return "monospace";
+    default:
+      return '"Nuvio JetBrains Sans", "JetBrains Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  }
+};
+
+const renderSubtitleOverlay = () => {
+  if (!subtitleOverlay || !subtitleOverlayText) return;
+  const text = String(state.subtitleOverlayText || "")
+    .replace(/\r/g, "")
+    .replace(/\\[Nn]/g, "\n");
+  const style = state.subtitleStyle || {};
+  if (!state.customSubtitleStylingEnabled || text.trim() === "") {
+    subtitleOverlay.classList.remove("visible");
+    subtitleOverlayText.textContent = "";
+    return;
+  }
+  const textColor = parseArgb(style.textColor);
+  const outlineColor = parseArgb(style.outlineColor);
+  const background = parseArgb(style.backgroundColor);
+  const viewportHeight = Math.max(320, window.innerHeight || 720);
+  const scale = Math.max(.6, Math.min(3, viewportHeight / 360));
+  const styleScale = Math.max(.6, Math.min(1.6, scale));
+  const fontSizePx = Math.max(10, (Number(style.fontSizeSp) || 18) * scale);
+  const outlineWidth = style.outlineEnabled
+    ? Math.max(1, (Number(style.outlineWidth) || 2) * styleScale)
+    : 0;
+  const textAlpha = textColor.alpha / 255;
+  const shadowEnabled = Boolean(style.shadowEnabled);
+  const shadowSize = Math.max(1, Number(style.shadowSize) || 2) * styleScale;
+  const shadowAlpha = Math.max(0, Math.min(100, Number(style.shadowOpacity) || 0)) / 100 * textAlpha;
+  const shadows = [];
+  if (outlineWidth > 0) {
+    const color = `rgba(${outlineColor.red}, ${outlineColor.green}, ${outlineColor.blue}, ${(outlineColor.alpha / 255 * textAlpha).toFixed(3)})`;
+    [
+      [-outlineWidth, 0], [outlineWidth, 0], [0, -outlineWidth], [0, outlineWidth],
+      [-outlineWidth, -outlineWidth], [outlineWidth, -outlineWidth],
+      [-outlineWidth, outlineWidth], [outlineWidth, outlineWidth],
+    ].forEach(([dx, dy]) => shadows.push(`${dx}px ${dy}px 0 ${color}`));
+  }
+  if (shadowEnabled && shadowAlpha > 0) {
+    shadows.push(`${shadowSize}px ${shadowSize}px ${shadowSize * 1.6}px rgba(0, 0, 0, ${shadowAlpha.toFixed(3)})`);
+  }
+  const bottomOffset = Math.max(0, Math.min(200, Number(style.bottomOffset) || 0));
+  subtitleOverlayText.textContent = text;
+  subtitleOverlayText.style.color = textColor.css;
+  subtitleOverlayText.style.fontSize = `${fontSizePx}px`;
+  subtitleOverlayText.style.fontFamily = subtitleFontFamily(style.fontId);
+  subtitleOverlayText.style.fontWeight = style.bold ? "700" : "400";
+  subtitleOverlayText.style.textShadow = shadows.length > 0 ? shadows.join(", ") : "none";
+  subtitleOverlayText.style.backgroundColor = background.css;
+  subtitleOverlayText.style.borderRadius = `${Math.max(0, Math.min(24, Number(style.backgroundRadius) || 0)) * styleScale}px`;
+  subtitleOverlay.style.bottom = `${(0.0533 + bottomOffset / 1000) * 100}%`;
+  subtitleOverlay.classList.add("visible");
+};
+
 const renderChrome = () => {
   const durationMs = Math.max(0, Number(state.durationMs) || 0);
   const positionMs = isScrubbing ? scrubPositionMs : Math.max(0, Number(state.positionMs) || 0);
@@ -2851,6 +2916,7 @@ const renderChrome = () => {
 const render = (modalOpened = false) => {
   applyTheme();
   renderChrome();
+  renderSubtitleOverlay();
   renderActiveModal(modalOpened);
 };
 

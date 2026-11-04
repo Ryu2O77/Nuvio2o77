@@ -11,6 +11,7 @@ data class ForkSettingsUiState(
     val continueWatchingPrefetchCount: Int = ForkSettingsRepository.DefaultPrefetchCount,
     val continueWatchingPrefetchTtlHours: Int = ForkSettingsRepository.DefaultPrefetchTtlHours,
     val nextEpisodePrefetchEnabled: Boolean = true,
+    val nextEpisodeVideoPrefetchEnabled: Boolean = false,
     val nextEpisodePrefetchMinutes: Int = ForkSettingsRepository.DefaultNextEpisodePrefetchMinutes,
 )
 
@@ -47,6 +48,7 @@ object ForkSettingsRepository {
                 ForkSettingsStorage.loadContinueWatchingPrefetchTtlHours() ?: DefaultPrefetchTtlHours,
             ),
             nextEpisodePrefetchEnabled = ForkSettingsStorage.loadNextEpisodePrefetchEnabled() ?: true,
+            nextEpisodeVideoPrefetchEnabled = ForkSettingsStorage.loadNextEpisodeVideoPrefetchEnabled() ?: false,
             nextEpisodePrefetchMinutes = clampNextEpisodeMinutes(
                 ForkSettingsStorage.loadNextEpisodePrefetchMinutes() ?: DefaultNextEpisodePrefetchMinutes,
             ),
@@ -95,6 +97,13 @@ object ForkSettingsRepository {
         if (_uiState.value.nextEpisodePrefetchEnabled == enabled) return
         _uiState.value = _uiState.value.copy(nextEpisodePrefetchEnabled = enabled)
         ForkSettingsStorage.saveNextEpisodePrefetchEnabled(enabled)
+    }
+
+    fun setNextEpisodeVideoPrefetchEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (_uiState.value.nextEpisodeVideoPrefetchEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(nextEpisodeVideoPrefetchEnabled = enabled)
+        ForkSettingsStorage.saveNextEpisodeVideoPrefetchEnabled(enabled)
     }
 
     fun setNextEpisodePrefetchMinutes(minutes: Int) {

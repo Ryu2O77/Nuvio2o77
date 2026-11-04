@@ -758,6 +758,54 @@ object StreamsRepository {
         log.d { "Prefetched ${payloads.size} addon payloads for $contentKey" }
     }
 
+    /**
+     * Devuelve los streams ya precargados para un contenido, parseando la caché de
+     * respuestas de addons. Si la caché está vencida, la vuelve a descargar.
+     */
+    internal suspend fun prefetchedStreams(
+        type: String,
+        videoId: String,
+        parentMetaId: String?,
+        season: Int?,
+        episode: Int?,
+        maxAgeMs: Long,
+    ): List<StreamItem> {
+        val embedded = MetaDetailsRepository.findEmbeddedStreams(videoId)
+        if (embedded.isNotEmpty()) return embedded
+        if (maxAgeMs <= 0L) return emptyList()
+
+        prefetchAddonStreams(
+            type = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            season = season,
+            episode = episode,
+            maxAgeMs = maxAgeMs,
+        )
+
+        val contentKey = StreamLinkCacheRepository.contentKey(
+            type = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            season = season,
+            episode = episode,
+        )
+        val payloads = AddonStreamsCache.getPayloads(contentKey, maxAgeMs)
+        if (payloads.isEmpty()) return emptyList()
+
+        return installedStreamAddonTargets(type, videoId).flatMap { addon ->
+            val payload = payloads[addon.addonId] ?: return@flatMap emptyList()
+            runCatching {
+                StreamParser.parse(
+                    payload = payload,
+                    addonName = addon.addonName,
+                    addonId = addon.addonId,
+                    addonLogo = addon.manifest.logoUrl,
+                )
+            }.getOrElse { emptyList() }
+        }
+    }
+
     fun selectFilter(addonId: String?) {
         _uiState.update { it.copy(selectedFilter = addonId) }
     }

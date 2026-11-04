@@ -1,6 +1,11 @@
 package com.nuvio.app.features.streams
 
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.debrid.DirectDebridPlayableResult
+import com.nuvio.app.features.debrid.DirectDebridPlaybackResolver
+import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.downloads.DownloadsRepository
+import com.nuvio.app.features.downloads.isSupportedDownloadUrl
 import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
 import com.nuvio.app.isCloudLibraryContinueWatchingItem
@@ -18,6 +23,7 @@ import kotlinx.coroutines.launch
  * de "Continuar viendo" para que el panel de fuentes abra al instante.
  */
 internal object ContinueWatchingStreamsPrefetcher {
+    private const val MaxVideoPrefetchCandidates = 12
     private val log = Logger.withTag("CWPrefetch")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var activeJob: Job? = null
@@ -93,25 +99,109 @@ internal object ContinueWatchingStreamsPrefetcher {
         parentMetaId: String,
         season: Int,
         episode: Int,
+        currentVideoId: String? = null,
     ) {
         ForkSettingsRepository.ensureLoaded()
         val settings = ForkSettingsRepository.uiState.value
-        if (!settings.nextEpisodePrefetchEnabled) return
+        val prefetchStreams = settings.nextEpisodePrefetchEnabled
+        val prefetchVideo = settings.nextEpisodeVideoPrefetchEnabled
+        if (!prefetchStreams && !prefetchVideo) return
         val maxAgeMs = settings.continueWatchingPrefetchTtlHours * 60L * 60L * 1_000L
         scope.launch {
-            runCatchingUnlessCancelled {
-                StreamsRepository.prefetchAddonStreams(
-                    type = type,
-                    videoId = videoId,
-                    parentMetaId = parentMetaId,
-                    season = season,
-                    episode = episode,
-                    maxAgeMs = maxAgeMs,
-                )
-            }.onFailure { error ->
-                log.d(error) { "Next episode prefetch failed for $videoId" }
+            if (prefetchStreams || prefetchVideo) {
+                runCatchingUnlessCancelled {
+                    StreamsRepository.prefetchAddonStreams(
+                        type = type,
+                        videoId = videoId,
+                        parentMetaId = parentMetaId,
+                        season = season,
+                        episode = episode,
+                        maxAgeMs = maxAgeMs,
+                    )
+                }.onFailure { error ->
+                    log.d(error) { "Next episode prefetch failed for $videoId" }
+                }
+            }
+            if (prefetchVideo) {
+                runCatchingUnlessCancelled {
+                    cacheNextEpisodeVideo(
+                        type = type,
+                        videoId = videoId,
+                        parentMetaId = parentMetaId,
+                        season = season,
+                        episode = episode,
+                        currentVideoId = currentVideoId,
+                        maxAgeMs = maxAgeMs,
+                    )
+                }.onFailure { error ->
+                    log.d(error) { "Next episode video prefetch failed for $videoId" }
+                }
             }
         }
+    }
+
+    /**
+     * Descarga en segundo plano el video del próximo episodio usando el primer enlace
+     * reproducible disponible, igual que si el usuario hubiera pulsado ese enlace.
+     */
+    private suspend fun cacheNextEpisodeVideo(
+        type: String,
+        videoId: String,
+        parentMetaId: String,
+        season: Int,
+        episode: Int,
+        currentVideoId: String?,
+        maxAgeMs: Long,
+    ) {
+        if (DownloadsRepository.hasDownloadFor(parentMetaId, season, episode)) return
+
+        val streams = StreamsRepository.prefetchedStreams(
+            type = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            season = season,
+            episode = episode,
+            maxAgeMs = maxAgeMs,
+        )
+        if (streams.isEmpty()) return
+
+        var candidate: StreamItem? = null
+        for (stream in streams.take(MaxVideoPrefetchCandidates)) {
+            val resolved = when (val result = DirectDebridPlaybackResolver.resolveToPlayableStream(stream, season, episode)) {
+                is DirectDebridPlayableResult.Success -> result.stream
+                else -> null
+            }
+            if (resolved?.playableDirectUrl?.isSupportedDownloadUrl() == true) {
+                candidate = resolved
+                break
+            }
+        }
+        val stream = candidate ?: return
+
+        val meta = MetaDetailsRepository.peek(type, parentMetaId)
+        val episodeVideo = meta?.videos?.firstOrNull { it.id == videoId }
+            ?: meta?.videos?.firstOrNull { it.season == season && it.episode == episode }
+
+        DownloadsRepository.cleanupPrefetchCache(
+            keepVideoIds = listOfNotNull(currentVideoId?.takeIf { it.isNotBlank() }, videoId).toSet(),
+        )
+
+        DownloadsRepository.enqueueFromStream(
+            contentType = type,
+            videoId = videoId,
+            parentMetaId = parentMetaId,
+            parentMetaType = type,
+            title = meta?.name ?: parentMetaId,
+            logo = meta?.logo,
+            poster = meta?.poster,
+            background = meta?.background,
+            seasonNumber = season,
+            episodeNumber = episode,
+            episodeTitle = episodeVideo?.title,
+            episodeThumbnail = episodeVideo?.thumbnail,
+            stream = stream,
+            isPrefetchCache = true,
+        )
     }
 
     fun clearCache() {        activeJob?.cancel()

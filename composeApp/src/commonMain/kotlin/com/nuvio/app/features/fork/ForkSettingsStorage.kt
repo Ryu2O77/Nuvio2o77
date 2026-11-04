@@ -23,6 +23,9 @@ internal expect object ForkSettingsStorage {
     fun loadNextEpisodePrefetchEnabled(): Boolean?
     fun saveNextEpisodePrefetchEnabled(enabled: Boolean)
 
+    fun loadNextEpisodeVideoPrefetchEnabled(): Boolean?
+    fun saveNextEpisodeVideoPrefetchEnabled(enabled: Boolean)
+
     fun loadNextEpisodePrefetchMinutes(): Int?
     fun saveNextEpisodePrefetchMinutes(minutes: Int)
 }

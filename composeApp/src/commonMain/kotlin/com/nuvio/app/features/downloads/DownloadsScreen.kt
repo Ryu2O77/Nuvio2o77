@@ -252,7 +252,7 @@ private fun LazyListScope.downloadsRootContent(
         }
     }
 
-    if (uiState.items.isEmpty()) {
+    if (uiState.userItems.isEmpty()) {
         item {
             Box(
                 modifier = Modifier

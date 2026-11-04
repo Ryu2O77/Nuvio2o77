@@ -41,6 +41,7 @@ import com.nuvio.app.features.servers.ServerPlayback
 import com.nuvio.app.features.servers.ServerStreams
 import com.nuvio.app.features.streams.BingeGroupCacheRepository
 import com.nuvio.app.features.streams.ContinueWatchingStreamsPrefetcher
+import com.nuvio.app.features.streams.AddonStreamsCache
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.hasLikelyExpiringPlaybackCredentials
@@ -897,11 +898,25 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
     ) {
         val nextEp = nextEpisodeInfo
         if (nextEp != null && nextEp.hasAired == true) {
-            val prefetchKey = "${nextEp.videoId}|${nextEp.season}|${nextEp.episode}"
+            ForkSettingsRepository.ensureLoaded()
+            val forkSettings = ForkSettingsRepository.uiState.value
+            val prefetchKey = buildString {
+                append(nextEp.videoId)
+                append('|')
+                append(nextEp.season)
+                append('|')
+                append(nextEp.episode)
+                append('|')
+                append(forkSettings.nextEpisodePrefetchEnabled)
+                append('|')
+                append(forkSettings.nextEpisodeVideoPrefetchEnabled)
+                append('|')
+                append(forkSettings.nextEpisodePrefetchMinutes)
+            }
             if (nextEpisodeCachePrefetchKey != prefetchKey) {
-                ForkSettingsRepository.ensureLoaded()
-                val forkSettings = ForkSettingsRepository.uiState.value
-                if (forkSettings.nextEpisodePrefetchEnabled) {
+                val prefetchStreams = forkSettings.nextEpisodePrefetchEnabled
+                val prefetchVideo = forkSettings.nextEpisodeVideoPrefetchEnabled
+                if (prefetchStreams || prefetchVideo) {
                     val remainingMs = playbackSnapshot.durationMs - playbackSnapshot.positionMs
                     val leadMs = forkSettings.nextEpisodePrefetchMinutes * 60_000L
                     if (playbackSnapshot.durationMs > 0L && remainingMs > 0L && remainingMs <= leadMs) {
@@ -912,6 +927,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
                             parentMetaId = parentMetaId,
                             season = nextEp.season,
                             episode = nextEp.episode,
+                            currentVideoId = activeVideoId,
                         )
                     }
                 }
@@ -981,12 +997,40 @@ internal fun PlayerScreenRuntime.removeFailedStreamFromCache() {
         episode = activeEpisodeNumber,
     )
     StreamLinkCacheRepository.remove(cacheKey)
+    AddonStreamsCache.remove(cacheKey)
 }
 
-internal fun PlayerScreenRuntime.tryRefreshCredentialedSourceAfterError(message: String?): Boolean {
+private fun PlayerScreenRuntime.isLikelyIpBoundStreamError(message: String?): Boolean {
+    val hints = buildString {
+        append(activeProviderName)
+        append(' ')
+        append(activeProviderAddonId.orEmpty())
+        append(' ')
+        append(activeStreamTitle)
+        append(' ')
+        append(activeSourceUrl.orEmpty())
+    }.lowercase()
+    if (hints.contains("elhosted")) return true
+
+    val normalized = message.orEmpty().lowercase()
+    if (normalized.isBlank()) return false
+    if (normalized.contains("elhosted")) return true
+    val mentionsIp = Regex("""\bip\b""").containsMatchIn(normalized) ||
+        normalized.contains("dirección ip") ||
+        normalized.contains("direccion ip")
+    if (!mentionsIp) return false
+    val mentionsMismatch = listOf(
+        "different", "another", "changed", "change", "mismatch", "not match",
+        "otra", "diferente", "cambió", "cambio",
+    ).any { normalized.contains(it) }
+    return mentionsMismatch
+}
+
+internal fun PlayerScreenRuntime.tryRefreshSourceAfterError(message: String?): Boolean {
     if (ServerStreams.isServerSourceId(activeProviderAddonId)) return retryServerSourceAfterError(message)
     val failedUrl = activeSourceUrl
-    if (!failedUrl.hasLikelyExpiringPlaybackCredentials()) return false
+    val ipBoundFailure = isLikelyIpBoundStreamError(message)
+    if (!ipBoundFailure && !failedUrl.hasLikelyExpiringPlaybackCredentials()) return false
     if (credentialRefreshJob?.isActive == true) return true
     if (credentialRefreshAttemptedSourceUrl == failedUrl) return false
 

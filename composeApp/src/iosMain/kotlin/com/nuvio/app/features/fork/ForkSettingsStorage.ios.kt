@@ -9,6 +9,7 @@ internal actual object ForkSettingsStorage {
     private const val prefetchCountKey = "nuvio_fork_continue_watching_prefetch_count"
     private const val prefetchTtlKey = "nuvio_fork_continue_watching_prefetch_ttl_hours"
     private const val nextEpisodeEnabledKey = "nuvio_fork_next_episode_prefetch_enabled"
+    private const val nextEpisodeVideoEnabledKey = "nuvio_fork_next_episode_video_prefetch_enabled"
     private const val nextEpisodeMinutesKey = "nuvio_fork_next_episode_prefetch_minutes"
 
     private val defaults: NSUserDefaults
@@ -56,6 +57,13 @@ internal actual object ForkSettingsStorage {
 
     actual fun saveNextEpisodePrefetchEnabled(enabled: Boolean) {
         defaults.setBool(enabled, forKey = nextEpisodeEnabledKey)
+    }
+
+    actual fun loadNextEpisodeVideoPrefetchEnabled(): Boolean? =
+        if (hasKey(nextEpisodeVideoEnabledKey)) defaults.boolForKey(nextEpisodeVideoEnabledKey) else null
+
+    actual fun saveNextEpisodeVideoPrefetchEnabled(enabled: Boolean) {
+        defaults.setBool(enabled, forKey = nextEpisodeVideoEnabledKey)
     }
 
     actual fun loadNextEpisodePrefetchMinutes(): Int? =

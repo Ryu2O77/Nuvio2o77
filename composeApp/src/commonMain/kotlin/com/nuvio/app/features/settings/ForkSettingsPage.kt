@@ -18,6 +18,7 @@ import com.nuvio.app.core.ui.DialogButtons
 import com.nuvio.app.core.ui.DialogOption
 import com.nuvio.app.core.ui.DialogSurface
 import com.nuvio.app.core.ui.NuvioToastController
+import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.player.AnimeUpscalerMode
 import com.nuvio.app.features.player.PlayerSettingsRepository
@@ -141,7 +142,15 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
                     isTablet = isTablet,
                     onCheckedChange = ForkSettingsRepository::setNextEpisodePrefetchEnabled,
                 )
-                if (forkSettings.nextEpisodePrefetchEnabled) {
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = "Cachear también el video",
+                    description = "Descarga el video del próximo episodio usando el primer enlace disponible. Puede ocupar varios GB.",
+                    checked = forkSettings.nextEpisodeVideoPrefetchEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = ForkSettingsRepository::setNextEpisodeVideoPrefetchEnabled,
+                )
+                if (forkSettings.nextEpisodePrefetchEnabled || forkSettings.nextEpisodeVideoPrefetchEnabled) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
                         title = "Minutos antes del final",
@@ -150,6 +159,16 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
                         onClick = { showNextEpisodeMinutesDialog = true },
                     )
                 }
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsNavigationRow(
+                    title = "Borrar caché de video",
+                    description = "Elimina los videos precargados del próximo episodio.",
+                    isTablet = isTablet,
+                    onClick = {
+                        DownloadsRepository.clearPrefetchCache()
+                        NuvioToastController.show("Caché de video borrada")
+                    },
+                )
             }
         }
     }
