@@ -2758,6 +2758,7 @@ const finishChromePointerInteraction = event => {
 
 const subtitleFontFamily = id => {
   switch (id) {
+    case "default":
     case "sans":
       return "sans-serif";
     case "serif":
@@ -2765,7 +2766,7 @@ const subtitleFontFamily = id => {
     case "mono":
       return "monospace";
     default:
-      return '"Nuvio JetBrains Sans", "JetBrains Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      return "sans-serif";
   }
 };
 
