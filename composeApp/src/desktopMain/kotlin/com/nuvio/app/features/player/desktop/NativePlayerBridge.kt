@@ -62,6 +62,34 @@ internal object NativePlayerBridge {
     ): Long
 
     external fun dispose(handle: Long)
+
+    private external fun loadFileNative(
+        handle: Long,
+        sourceUrl: String,
+        headerLines: Array<String>,
+        playWhenReady: Boolean,
+        initialPositionMs: Long,
+    ): Boolean
+
+    /**
+     * Reuses an existing native player and swaps the media file instead of tearing
+     * the whole player down. This avoids paying the mpv/WebView2 startup cost when
+     * moving to the next episode. Only Windows implements the native handoff today;
+     * other desktop platforms keep the previous recreate-player behaviour.
+     */
+    fun loadFile(
+        handle: Long,
+        sourceUrl: String,
+        headerLines: Array<String>,
+        playWhenReady: Boolean,
+        initialPositionMs: Long,
+    ): Boolean {
+        if (DesktopHostOs.current != DesktopHostOs.WINDOWS) return false
+        return runCatching {
+            loadFileNative(handle, sourceUrl, headerLines, playWhenReady, initialPositionMs)
+        }.getOrDefault(false)
+    }
+
     external fun updateControls(handle: Long, controlsJson: String)
 
     /** macOS only: title, episode line, and poster for the system now-playing widget (Control Center). */

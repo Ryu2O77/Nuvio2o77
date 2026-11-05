@@ -49,6 +49,8 @@ typedef enum mpv_format {
 typedef enum mpv_event_id {
     MPV_EVENT_NONE = 0,
     MPV_EVENT_SHUTDOWN = 1,
+    MPV_EVENT_END_FILE = 7,
+    MPV_EVENT_FILE_LOADED = 8,
 } mpv_event_id;
 
 typedef struct mpv_event {
@@ -57,6 +59,16 @@ typedef struct mpv_event {
     uint64_t reply_userdata;
     void *data;
 } mpv_event;
+
+typedef struct mpv_event_end_file {
+    int reason;
+    int error;
+    int64_t playlist_entry_id;
+    int64_t playlist_insert_id;
+    int playlist_insert_num_entries;
+} mpv_event_end_file;
+
+constexpr int MPV_END_FILE_REASON_ERROR = 4;
 }
 
 namespace {
@@ -1199,6 +1211,7 @@ public:
     }
 
     bool isLoading() {
+        if (loadingNewSource.load()) return true;
         bool paused = isPaused();
         bool eofReached = isEnded();
         bool idle = flagProperty("core-idle", true);
@@ -1540,6 +1553,9 @@ private:
     std::mutex controlsMutex;
     std::string pendingControlsJson;
     double initialStartSeconds = 0.0;
+    // True between loadfile and the matching file-loaded event. Keeps the UI in the
+    // buffering state and hides the previous file's tracks while the new one opens.
+    std::atomic_bool loadingNewSource{false};
 
     friend LRESULT CALLBACK messageWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
     friend LRESULT CALLBACK containerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -1828,6 +1844,19 @@ private:
         }
     }
 
+    static std::string mpvHeaderFieldsValue(const std::vector<std::string> &headerLines) {
+        std::string headers;
+        for (size_t index = 0; index < headerLines.size(); index++) {
+            if (index > 0) headers.push_back(',');
+            // Escape backslashes and commas in header values.
+            for (char c : headerLines[index]) {
+                if (c == '\\' || c == ',') headers.push_back('\\');
+                headers.push_back(c);
+            }
+        }
+        return headers;
+    }
+
     void startMpv(
         const std::string &sourceUrl,
         const std::vector<std::string> &headerLines,
@@ -1917,18 +1946,7 @@ private:
                 throw std::runtime_error(std::string("mpv wid option failed: ") + api.errorText(widResult));
             }
 
-            if (!headerLines.empty()) {
-                std::string headers;
-                for (size_t index = 0; index < headerLines.size(); index++) {
-                    if (index > 0) headers.push_back(',');
-                    // Escape backslashes and commas in header values
-                    for (char c : headerLines[index]) {
-                        if (c == '\\' || c == ',') headers.push_back('\\');
-                        headers.push_back(c);
-                    }
-                }
-                setMpvOptionStringLocked("http-header-fields", headers.c_str());
-            }
+            setMpvOptionStringLocked("http-header-fields", mpvHeaderFieldsValue(headerLines).c_str());
 
             int initResult = api.initialize(mpv);
             if (initResult < 0) {
@@ -1956,6 +1974,42 @@ private:
         setPaused(!playWhenReady);
         auto self = shared_from_this();
         eventThread = std::thread([self]() { self->drainMpvEvents(); });
+    }
+
+public:
+    bool loadFile(
+        const std::string &sourceUrl,
+        const std::vector<std::string> &headerLines,
+        bool playWhenReady,
+        long long initialPositionMs
+    ) {
+        MpvApi &api = mpvApi();
+        std::lock_guard<std::mutex> lock(mpvMutex);
+        if (!mpv) return false;
+
+        initialStartSeconds = initialPositionMs > 0 ? (double)initialPositionMs / 1000.0 : 0.0;
+        setMpvOptionStringLocked("http-header-fields", mpvHeaderFieldsValue(headerLines).c_str());
+
+        int pauseFlag = playWhenReady ? 0 : 1;
+        api.setProperty(mpv, "pause", MPV_FORMAT_FLAG, &pauseFlag);
+        loadingNewSource.store(true);
+
+        std::vector<const char *> loadCommand = {"loadfile", sourceUrl.c_str(), "replace", "-1"};
+        std::string loadOptions;
+        if (initialPositionMs > 0) {
+            char startBuffer[64];
+            std::snprintf(startBuffer, sizeof(startBuffer), "start=%.3f", (double)initialPositionMs / 1000.0);
+            loadOptions = startBuffer;
+            loadCommand.push_back(loadOptions.c_str());
+        }
+        loadCommand.push_back(nullptr);
+
+        int commandResult = api.command(mpv, loadCommand.data());
+        if (commandResult < 0) {
+            loadingNewSource.store(false);
+            return false;
+        }
+        return true;
     }
 
     void layoutNativeSubviews() {
@@ -2201,6 +2255,17 @@ private:
             if (event->event_id == MPV_EVENT_SHUTDOWN) {
                 return;
             }
+            if (event->event_id == MPV_EVENT_FILE_LOADED) {
+                loadingNewSource.store(false);
+                continue;
+            }
+            if (event->event_id == MPV_EVENT_END_FILE) {
+                auto *endFile = static_cast<mpv_event_end_file *>(event->data);
+                if (endFile && endFile->reason == MPV_END_FILE_REASON_ERROR) {
+                    // The new file never became ready; stop showing the loading guard.
+                    loadingNewSource.store(false);
+                }
+            }
         }
     }
 
@@ -2354,6 +2419,7 @@ private:
     }
 
     std::string tracksJsonForType(const std::string &wantedType) {
+        if (loadingNewSource.load()) return "[]";
         long long count = int64Property("track-list/count", 0);
         std::ostringstream json;
         json << "[";
@@ -2614,6 +2680,29 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_create(
     auto *holder = new std::shared_ptr<WindowsMpvWebPlayer>(player);
     jlong handle = (jlong)(intptr_t)holder;
     return handle;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_loadFileNative(
+    JNIEnv *env,
+    jobject,
+    jlong handle,
+    jstring sourceUrl,
+    jobjectArray headerLines,
+    jboolean playWhenReady,
+    jlong initialPositionMs
+) {
+    auto player = playerFromHandle(handle);
+    if (!player) return JNI_FALSE;
+    std::string sourceUrlText = jstringToUtf8(env, sourceUrl);
+    std::vector<std::string> headerLineValues = jstringArrayToVector(env, headerLines);
+    bool loaded = player->loadFile(
+        sourceUrlText,
+        headerLineValues,
+        playWhenReady == JNI_TRUE,
+        initialPositionMs
+    );
+    return loaded ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

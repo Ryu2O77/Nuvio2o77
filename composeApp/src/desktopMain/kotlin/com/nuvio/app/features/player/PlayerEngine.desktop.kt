@@ -193,8 +193,15 @@ private fun NativePlayerSurface(
         )
     }
 
-    DisposableEffect(controller, sourceAvailable, sourceUrl, playbackHeaders) {
+    // Keep the native player alive across source changes: the controller swaps the
+    // media file inside mpv instead of paying the full player/WebView2 startup cost
+    // on every episode. It is only torn down when the surface leaves composition or
+    // the player has no current source.
+    DisposableEffect(controller) {
         onDispose { controller.dispose() }
+    }
+    LaunchedEffect(controller, sourceAvailable) {
+        if (!sourceAvailable) controller.dispose()
     }
 
     // The controls overlay owns the player shortcuts. After alt-tab, desktop

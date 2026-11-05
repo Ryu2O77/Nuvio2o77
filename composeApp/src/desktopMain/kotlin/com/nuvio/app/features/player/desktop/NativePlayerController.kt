@@ -58,6 +58,14 @@ internal typealias NativePlayerCreate = (
     NativePlayerEventSink,
 ) -> Long
 
+internal typealias NativePlayerLoadFile = (
+    Long,
+    String,
+    Array<String>,
+    Boolean,
+    Long,
+) -> Boolean
+
 internal class NativePlayerController(
     private val host: NativePlayerHost,
     private val nativeCreate: NativePlayerCreate = { hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink ->
@@ -65,6 +73,9 @@ internal class NativePlayerController(
         NativePlayerBridge.create(hostViewPtr, source, headers, playWhenReady, positionMs, controlsUrl, decoder, rtx, sink)
     },
     private val nativeDispose: (Long) -> Unit = NativePlayerBridge::dispose,
+    private val nativeLoadFile: NativePlayerLoadFile = { handle, source, headers, playWhenReady, positionMs ->
+        NativePlayerBridge.loadFile(handle, source, headers, playWhenReady, positionMs)
+    },
     private val nativeSeekTo: (Long, Long) -> Unit = NativePlayerBridge::seekTo,
     private val isHostDisplayable: () -> Boolean = { host.isDisplayable },
     private val resolveHostView: () -> Long = { AwtNativeViewResolver.resolveNativeViewPointer(host) },
@@ -104,6 +115,19 @@ internal class NativePlayerController(
 
     @Volatile
     private var handle: Long = 0L
+
+    // The source currently loaded in [handle]. Kept so a source change can use mpv's
+    // loadfile command instead of destroying and recreating the whole native player.
+    @Volatile
+    private var activeSourceUrl: String? = null
+    @Volatile
+    private var activeSourceHeaderLines: List<String> = emptyList()
+    @Volatile
+    private var activeInitialPositionMs: Long = 0L
+    @Volatile
+    private var activeDecoderPriority: Int? = null
+    @Volatile
+    private var activeNvidiaRtxSuperResolutionEnabled: Boolean? = null
 
     /** Native teardown of the previous player, if one is still running. */
     @Volatile
@@ -200,6 +224,7 @@ internal class NativePlayerController(
                 return@invokeLater
             }
             if (deferAttachUntilCreatesComplete()) return@invokeLater
+            if (reuseExistingPlayer(pending)) return@invokeLater
             disposePlayerHandle()
             val teardown = disposeInFlight
             if (teardown == null || !teardown.isAlive) {
@@ -236,6 +261,77 @@ internal class NativePlayerController(
             }
         }
     }
+
+    /**
+     * Swaps the media file on the current native player when possible. Returns true
+     * when the existing player already owns the requested source, so the caller must
+     * not dispose/recreate it.
+     */
+    private fun reuseExistingPlayer(pending: PendingSource): Boolean {
+        var reloaded = false
+        synchronized(lifecycleLock) {
+            if (releaseRequested || terminalReleaseFailure != null || pendingSource !== pending) return false
+            val current = handle
+            if (current == 0L) return false
+            val loadedSourceUrl = activeSourceUrl ?: return false
+            val loadedDecoderPriority = activeDecoderPriority ?: return false
+            val loadedRtx = activeNvidiaRtxSuperResolutionEnabled ?: return false
+
+            // Decoder options are only applied during native player creation. Keep the
+            // old recreate path when the user changes them.
+            if (pending.decoderPriority != loadedDecoderPriority ||
+                pending.nvidiaRtxSuperResolutionEnabled != loadedRtx
+            ) {
+                return false
+            }
+
+            val sameSource = pending.sourceUrl == loadedSourceUrl &&
+                pending.headerLines == activeSourceHeaderLines &&
+                pending.initialPositionMs == activeInitialPositionMs
+            if (sameSource) {
+                if (pending.playWhenReady) {
+                    NativePlayerBridge.setPaused(current, false)
+                } else {
+                    NativePlayerBridge.setPaused(current, true)
+                }
+                return true
+            }
+
+            val resolvedSource = resolveNativeSource(pending.sourceUrl)
+            val loaded = nativeLoadFile(
+                current,
+                resolvedSource,
+                pending.headerLines.toTypedArray(),
+                pending.playWhenReady,
+                pending.initialPositionMs,
+            )
+            if (!loaded) return false
+
+            activeSourceUrl = pending.sourceUrl
+            activeSourceHeaderLines = pending.headerLines
+            activeInitialPositionMs = pending.initialPositionMs
+            lastSentControlsStructureKey = null
+            reloaded = true
+        }
+        if (reloaded) {
+            log.d {
+                "reused native player handle=${handle} source=${pending.sourceUrl.toPlaybackLogKey()} " +
+                    "initialPositionMs=${pending.initialPositionMs}"
+            }
+            updateControls(controlsState)
+        }
+        return reloaded
+    }
+
+    private fun resolveNativeSource(sourceUrl: String): String =
+        if (sourceUrl.startsWith("file:", ignoreCase = true)) {
+            runCatching { java.io.File(java.net.URI(sourceUrl)).absolutePath }.getOrElse {
+                val stripped = sourceUrl.replaceFirst(Regex("^file:/{1,3}", RegexOption.IGNORE_CASE), "")
+                runCatching { java.net.URLDecoder.decode(stripped, "UTF-8") }.getOrDefault(stripped)
+            }
+        } else {
+            sourceUrl
+        }
 
     private fun deferAttachUntilCreatesComplete(): Boolean = synchronized(lifecycleLock) {
         createsInFlight.removeAll { worker -> !worker.isAlive }
@@ -302,14 +398,7 @@ internal class NativePlayerController(
                 if (!releaseRequested && pendingSource === pending) pending.onError(error.message)
                 return
             }
-        val resolvedSource = if (pending.sourceUrl.startsWith("file:", ignoreCase = true)) {
-            runCatching { java.io.File(java.net.URI(pending.sourceUrl)).absolutePath }.getOrElse {
-                val stripped = pending.sourceUrl.replaceFirst(Regex("^file:/{1,3}", RegexOption.IGNORE_CASE), "")
-                runCatching { java.net.URLDecoder.decode(stripped, "UTF-8") }.getOrDefault(stripped)
-            }
-        } else {
-            pending.sourceUrl
-        }
+        val resolvedSource = resolveNativeSource(pending.sourceUrl)
 
         // Native create blocks until the player's own UI thread finishes initialising, and that
         // thread creates child windows of the AWT host, which needs the EDT to keep pumping
@@ -350,6 +439,7 @@ internal class NativePlayerController(
                                 handle != created -> false
                                 pendingSource !== pending || !isHostDisplayable() -> {
                                     handle = 0L
+                                    clearActiveSource()
                                     lastSentControlsStructureKey = null
                                     startTrackedDisposeLocked(created)
                                     false
@@ -358,6 +448,11 @@ internal class NativePlayerController(
                             }
                         }
                         if (!shouldConfigure) return@invokeLater
+                        activeSourceUrl = pending.sourceUrl
+                        activeSourceHeaderLines = pending.headerLines
+                        activeInitialPositionMs = pending.initialPositionMs
+                        activeDecoderPriority = pending.decoderPriority
+                        activeNvidiaRtxSuperResolutionEnabled = pending.nvidiaRtxSuperResolutionEnabled
                         log.d {
                             "attach created handle=$created source=${resolvedSource.toPlaybackLogKey()} " +
                                 "initialPositionMs=${pending.initialPositionMs}"
@@ -943,8 +1038,18 @@ internal class NativePlayerController(
     private fun detachPlayerHandle(): Long = synchronized(lifecycleLock) {
         val current = handle
         handle = 0L
+        clearActiveSource()
         lastSentControlsStructureKey = null
         current
+    }
+
+    /** Must be called while holding [lifecycleLock]. */
+    private fun clearActiveSource() {
+        activeSourceUrl = null
+        activeSourceHeaderLines = emptyList()
+        activeInitialPositionMs = 0L
+        activeDecoderPriority = null
+        activeNvidiaRtxSuperResolutionEnabled = null
     }
 
     private fun recordTerminalDisposeFailure(error: Throwable, operation: String, nativeHandle: Long) {
@@ -976,6 +1081,7 @@ internal class NativePlayerController(
             val current = handle
             if (current == 0L) return
             handle = 0L
+            clearActiveSource()
             lastSentControlsStructureKey = null
             // Register and start teardown atomically so terminal release cannot sample an empty
             // worker slot between detaching the handle and starting native disposal.
@@ -1012,6 +1118,8 @@ internal class NativePlayerController(
 
     override fun retry() {
         val pending = pendingSource ?: return
+        // A retry should re-open the stream, not silently reuse the player that just failed.
+        dispose()
         attach(
             sourceUrl = pending.sourceUrl,
             sourceHeaders = pending.headerLines.toHeaderMap(),
