@@ -1266,7 +1266,14 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
             }
         }
         "subtitleShadowToggle" -> {
-            PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(shadowEnabled = !subtitleStyle.shadowEnabled))
+            val appearance = subtitleStyle.appearance
+            val enabled = !appearance.shadowEnabled
+            PlayerSettingsRepository.setSubtitleStyle(
+                subtitleStyle.copy(
+                    shadowEnabled = enabled,
+                    appearance = appearance.copy(shadowEnabled = enabled),
+                ),
+            )
         }
         "subtitleShadowOffsetDelta" -> {
             PlayerSettingsRepository.setSubtitleStyle(
@@ -1301,10 +1308,13 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
             }
         }
         "subtitleShadowOpacityDelta" -> {
+            val appearance = subtitleStyle.appearance
+            val opacity = (appearance.shadowOpacity + value.toInt()).coerceIn(0, 100)
             PlayerSettingsRepository.setSubtitleStyle(
                 subtitleStyle.copy(
                     shadowEnabled = true,
-                    shadowOpacity = (subtitleStyle.shadowOpacity + value.toInt()).coerceIn(0, 100),
+                    shadowOpacity = opacity,
+                    appearance = appearance.copy(shadowEnabled = true, shadowOpacity = opacity),
                 ),
             )
         }
@@ -1343,16 +1353,6 @@ internal fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: 
             fonts.getOrNull(value.toInt())?.let { id ->
                 PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(appearance = subtitleStyle.appearance.copy(fontId = id)))
             }
-        }
-        "subtitleShadowToggle" -> {
-            val appearance = subtitleStyle.appearance
-            PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(appearance = appearance.copy(shadowEnabled = !appearance.shadowEnabled)))
-        }
-        "subtitleShadowOpacityDelta" -> {
-            val appearance = subtitleStyle.appearance
-            PlayerSettingsRepository.setSubtitleStyle(
-                subtitleStyle.copy(appearance = appearance.copy(shadowOpacity = (appearance.shadowOpacity + value.toInt()).coerceIn(0, 100))),
-            )
         }
         "subtitleShadowSizeDelta" -> {
             val appearance = subtitleStyle.appearance
