@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.features.debrid.DirectDebridPlayableResult
 import com.nuvio.app.features.debrid.DirectDebridPlaybackResolver
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.downloads.DownloadStatus
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.downloads.isSupportedDownloadUrl
 import com.nuvio.app.features.fork.ForkSettingsRepository
@@ -28,6 +29,13 @@ internal object ContinueWatchingStreamsPrefetcher {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var activeJob: Job? = null
     private var lastRequestKey: String? = null
+    private var videoPrefetchJob: Job? = null
+    @Volatile
+    private var activeVideoPrefetchVideoId: String? = null
+    @Volatile
+    private var playbackPressure = false
+    @Volatile
+    private var pausedByPlaybackPressure = false
 
     fun prefetch(items: List<ContinueWatchingItem>) {
         ForkSettingsRepository.ensureLoaded()
@@ -90,10 +98,42 @@ internal object ContinueWatchingStreamsPrefetcher {
     }
 
     /**
-     * Precarga las respuestas de los addons del próximo episodio mientras todavía se está
-     * reproduciendo el actual. Así, al pasar de episodio, las fuentes ya están en caché.
+     * Precarga las respuestas de los addons del próximo episodio en cuanto se conoce,
+     * sin esperar a los últimos minutos. Son peticiones pequeñas y así el panel de
+     * fuentes ya está listo cuando el usuario cambia de episodio.
      */
-    fun prefetchNextEpisode(
+    fun prefetchNextEpisodeStreams(
+        type: String,
+        videoId: String,
+        parentMetaId: String,
+        season: Int,
+        episode: Int,
+    ) {
+        ForkSettingsRepository.ensureLoaded()
+        val settings = ForkSettingsRepository.uiState.value
+        if (!settings.nextEpisodePrefetchEnabled) return
+        val maxAgeMs = settings.continueWatchingPrefetchTtlHours * 60L * 60L * 1_000L
+        scope.launch {
+            runCatchingUnlessCancelled {
+                StreamsRepository.prefetchAddonStreams(
+                    type = type,
+                    videoId = videoId,
+                    parentMetaId = parentMetaId,
+                    season = season,
+                    episode = episode,
+                    maxAgeMs = maxAgeMs,
+                )
+            }.onFailure { error ->
+                log.d(error) { "Next episode streams prefetch failed for $videoId" }
+            }
+        }
+    }
+
+    /**
+     * Descarga el video del próximo episodio en segundo plano. La descarga se puede
+     * pausar y reanudar según el buffer del episodio actual.
+     */
+    fun prefetchNextEpisodeVideo(
         type: String,
         videoId: String,
         parentMetaId: String,
@@ -103,40 +143,95 @@ internal object ContinueWatchingStreamsPrefetcher {
     ) {
         ForkSettingsRepository.ensureLoaded()
         val settings = ForkSettingsRepository.uiState.value
-        val prefetchStreams = settings.nextEpisodePrefetchEnabled
-        val prefetchVideo = settings.nextEpisodeVideoPrefetchEnabled
-        if (!prefetchStreams && !prefetchVideo) return
+        if (!settings.nextEpisodeVideoPrefetchEnabled) return
         val maxAgeMs = settings.continueWatchingPrefetchTtlHours * 60L * 60L * 1_000L
-        scope.launch {
-            if (prefetchStreams || prefetchVideo) {
-                runCatchingUnlessCancelled {
-                    StreamsRepository.prefetchAddonStreams(
-                        type = type,
-                        videoId = videoId,
-                        parentMetaId = parentMetaId,
-                        season = season,
-                        episode = episode,
-                        maxAgeMs = maxAgeMs,
-                    )
-                }.onFailure { error ->
-                    log.d(error) { "Next episode prefetch failed for $videoId" }
-                }
+        if (activeVideoPrefetchVideoId != videoId) {
+            pausedByPlaybackPressure = false
+        }
+        activeVideoPrefetchVideoId = videoId
+        videoPrefetchJob?.cancel()
+        videoPrefetchJob = scope.launch {
+            runCatchingUnlessCancelled {
+                cacheNextEpisodeVideo(
+                    type = type,
+                    videoId = videoId,
+                    parentMetaId = parentMetaId,
+                    season = season,
+                    episode = episode,
+                    currentVideoId = currentVideoId,
+                    maxAgeMs = maxAgeMs,
+                )
+            }.onFailure { error ->
+                log.d(error) { "Next episode video prefetch failed for $videoId" }
             }
-            if (prefetchVideo) {
-                runCatchingUnlessCancelled {
-                    cacheNextEpisodeVideo(
-                        type = type,
-                        videoId = videoId,
-                        parentMetaId = parentMetaId,
-                        season = season,
-                        episode = episode,
-                        currentVideoId = currentVideoId,
-                        maxAgeMs = maxAgeMs,
-                    )
-                }.onFailure { error ->
-                    log.d(error) { "Next episode video prefetch failed for $videoId" }
-                }
+            // The download may have been enqueued after the latest pressure update.
+            applyPlaybackPressure()
+        }
+    }
+
+    /**
+     * Pausa la descarga de fondo mientras el episodio actual está rebuffereando o
+     * tiene poco buffer por delante. Se reanuda cuando la reproducción vuelve a ir
+     * cómoda, o cuando el usuario pausa el episodio.
+     */
+    fun setPlaybackPressure(pressure: Boolean) {
+        if (playbackPressure == pressure) return
+        playbackPressure = pressure
+        applyPlaybackPressure()
+    }
+
+    /** Cancela la resolución/descarga en curso y olvida el episodio activo. */
+    fun cancelVideoPrefetch() {
+        videoPrefetchJob?.cancel()
+        videoPrefetchJob = null
+        activeVideoPrefetchVideoId = null
+        pausedByPlaybackPressure = false
+    }
+
+    /** El próximo episodio cambió: descarta una precarga antigua que ya no sirve. */
+    fun onNextEpisodeChanged(videoId: String?) {
+        val normalized = videoId?.trim().orEmpty()
+        val active = activeVideoPrefetchVideoId ?: return
+        if (normalized == active) return
+        discardIncompletePrefetch(active)
+        activeVideoPrefetchVideoId = null
+        pausedByPlaybackPressure = false
+    }
+
+    /**
+     * El episodio precargado pasó a ser el episodio actual. Si todavía estaba
+     * descargándose ya no se puede usar para esta reproducción, así que se elimina
+     * para que no compita con el stream que se está viendo.
+     */
+    fun onActiveVideoChanged(videoId: String?) {
+        val normalized = videoId?.trim().orEmpty()
+        if (normalized.isEmpty()) return
+        if (activeVideoPrefetchVideoId != normalized) return
+        discardIncompletePrefetch(normalized)
+        activeVideoPrefetchVideoId = null
+        pausedByPlaybackPressure = false
+    }
+
+    private fun discardIncompletePrefetch(videoId: String) {
+        val item = DownloadsRepository.findPrefetchDownloadByVideoId(videoId) ?: return
+        if (item.status != DownloadStatus.Completed) {
+            DownloadsRepository.cancelDownload(item.id)
+        }
+    }
+
+    private fun applyPlaybackPressure() {
+        val videoId = activeVideoPrefetchVideoId ?: return
+        val item = DownloadsRepository.findPrefetchDownloadByVideoId(videoId) ?: return
+        if (playbackPressure) {
+            if (item.status == DownloadStatus.Downloading) {
+                DownloadsRepository.pauseDownload(item.id)
+                pausedByPlaybackPressure = true
             }
+            return
+        }
+        if (pausedByPlaybackPressure && item.status == DownloadStatus.Paused) {
+            pausedByPlaybackPressure = false
+            DownloadsRepository.resumeDownload(item.id)
         }
     }
 
@@ -177,6 +272,9 @@ internal object ContinueWatchingStreamsPrefetcher {
             }
         }
         val stream = candidate ?: return
+        // The user may have moved to another next episode while the stream URLs were
+        // being resolved. Do not enqueue a download that is already obsolete.
+        if (activeVideoPrefetchVideoId != videoId) return
 
         val meta = MetaDetailsRepository.peek(type, parentMetaId)
         val episodeVideo = meta?.videos?.firstOrNull { it.id == videoId }

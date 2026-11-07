@@ -30,7 +30,7 @@ import org.jetbrains.compose.resources.stringResource
 
 private val prefetchCountOptions = listOf(5, 10, 15, 20)
 private val prefetchTtlOptions = listOf(3, 6, 12, 24, 48)
-private val nextEpisodeMinutesOptions = listOf(1, 3, 5, 10, 15)
+private val nextEpisodeMinutesOptions = listOf(0, 1, 2, 3, 5, 10, 15, 30)
 
 internal fun LazyListScope.forkSettingsContent(isTablet: Boolean) {
     item {
@@ -136,8 +136,8 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
         SettingsSection(title = "Siguiente episodio", isTablet = isTablet) {
             SettingsGroup(isTablet = isTablet) {
                 SettingsSwitchRow(
-                    title = "Precargar el siguiente episodio",
-                    description = "Empieza a descargar las fuentes del próximo episodio antes de que termine el actual.",
+                    title = "Precargar las fuentes del siguiente episodio",
+                    description = "Consulta las fuentes en cuanto se conoce el próximo episodio para que el panel abra al instante.",
                     checked = forkSettings.nextEpisodePrefetchEnabled,
                     isTablet = isTablet,
                     onCheckedChange = ForkSettingsRepository::setNextEpisodePrefetchEnabled,
@@ -145,16 +145,20 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = "Cachear también el video",
-                    description = "Descarga el video del próximo episodio usando el primer enlace disponible. Puede ocupar varios GB.",
+                    description = "Descarga el video del próximo episodio en segundo plano. Se pausa sola si la reproducción actual necesita ancho de banda. Puede ocupar varios GB.",
                     checked = forkSettings.nextEpisodeVideoPrefetchEnabled,
                     isTablet = isTablet,
                     onCheckedChange = ForkSettingsRepository::setNextEpisodeVideoPrefetchEnabled,
                 )
-                if (forkSettings.nextEpisodePrefetchEnabled || forkSettings.nextEpisodeVideoPrefetchEnabled) {
+                if (forkSettings.nextEpisodeVideoPrefetchEnabled) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
-                        title = "Minutos antes del final",
-                        description = "${forkSettings.nextEpisodePrefetchMinutes} minutos",
+                        title = "Empezar a descargar el video",
+                        description = if (forkSettings.nextEpisodePrefetchMinutes == 0) {
+                            "Inmediatamente"
+                        } else {
+                            "${forkSettings.nextEpisodePrefetchMinutes} minutos después de empezar"
+                        },
                         isTablet = isTablet,
                         onClick = { showNextEpisodeMinutesDialog = true },
                     )
@@ -165,6 +169,7 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
                     description = "Elimina los videos precargados del próximo episodio.",
                     isTablet = isTablet,
                     onClick = {
+                        ContinueWatchingStreamsPrefetcher.cancelVideoPrefetch()
                         DownloadsRepository.clearPrefetchCache()
                         NuvioToastController.show("Caché de video borrada")
                     },
@@ -176,7 +181,7 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
     if (showNextEpisodeMinutesDialog) {
         DialogSurface(
             onDismissRequest = { showNextEpisodeMinutesDialog = false },
-            title = "Minutos antes del final",
+            title = "Empezar a descargar el video",
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -184,7 +189,7 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
             ) {
                 nextEpisodeMinutesOptions.forEach { minutes ->
                     DialogOption(
-                        text = "$minutes minutos",
+                        text = if (minutes == 0) "Inmediatamente" else "$minutes minutos después de empezar",
                         selected = forkSettings.nextEpisodePrefetchMinutes == minutes,
                         onClick = {
                             ForkSettingsRepository.setNextEpisodePrefetchMinutes(minutes)

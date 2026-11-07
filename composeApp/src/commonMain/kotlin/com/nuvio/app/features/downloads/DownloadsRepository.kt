@@ -88,6 +88,15 @@ object DownloadsRepository {
         }
     }
 
+    internal fun findPrefetchDownloadByVideoId(videoId: String): DownloadItem? {
+        ensureLoaded()
+        val normalizedVideoId = videoId.trim()
+        if (normalizedVideoId.isEmpty()) return null
+        return _uiState.value.items.firstOrNull { item ->
+            item.isPrefetchCache && item.videoId == normalizedVideoId
+        }
+    }
+
     fun hasDownloadFor(
         parentMetaId: String,
         seasonNumber: Int? = null,

@@ -461,6 +461,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
             playerController?.clearNowPlayingInfo()
             P2pStreamingEngine.shutdown()
             cancelNextEpisodePreload()
+            ContinueWatchingStreamsPrefetcher.setPlaybackPressure(false)
             PlayerStreamsRepository.clearAll()
         }
     }
@@ -889,6 +890,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         isScrubbingTimeline,
         errorMessage,
         nextEpisodeInfo,
+        initialLoadCompleted,
         skipIntervals,
         playerSettingsUiState.nextEpisodeThresholdMode,
         playerSettingsUiState.nextEpisodeThresholdPercent,
@@ -900,36 +902,48 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         if (nextEp != null && nextEp.hasAired == true) {
             ForkSettingsRepository.ensureLoaded()
             val forkSettings = ForkSettingsRepository.uiState.value
-            val prefetchKey = buildString {
+            val nextEpisodeKey = buildString {
                 append(nextEp.videoId)
                 append('|')
                 append(nextEp.season)
                 append('|')
                 append(nextEp.episode)
-                append('|')
-                append(forkSettings.nextEpisodePrefetchEnabled)
-                append('|')
-                append(forkSettings.nextEpisodeVideoPrefetchEnabled)
-                append('|')
-                append(forkSettings.nextEpisodePrefetchMinutes)
             }
-            if (nextEpisodeCachePrefetchKey != prefetchKey) {
-                val prefetchStreams = forkSettings.nextEpisodePrefetchEnabled
-                val prefetchVideo = forkSettings.nextEpisodeVideoPrefetchEnabled
-                if (prefetchStreams || prefetchVideo) {
-                    val remainingMs = playbackSnapshot.durationMs - playbackSnapshot.positionMs
-                    val leadMs = forkSettings.nextEpisodePrefetchMinutes * 60_000L
-                    if (playbackSnapshot.durationMs > 0L && remainingMs > 0L && remainingMs <= leadMs) {
-                        nextEpisodeCachePrefetchKey = prefetchKey
-                        ContinueWatchingStreamsPrefetcher.prefetchNextEpisode(
-                            type = contentType ?: parentMetaType,
-                            videoId = nextEp.videoId,
-                            parentMetaId = parentMetaId,
-                            season = nextEp.season,
-                            episode = nextEp.episode,
-                            currentVideoId = activeVideoId,
-                        )
-                    }
+            val prefetchStreams = forkSettings.nextEpisodePrefetchEnabled
+            val prefetchVideo = forkSettings.nextEpisodeVideoPrefetchEnabled
+
+            // If the next episode changed, do not keep downloading an obsolete one.
+            ContinueWatchingStreamsPrefetcher.onNextEpisodeChanged(nextEp.videoId)
+
+            if (prefetchStreams && initialLoadCompleted) {
+                val streamsKey = "$nextEpisodeKey|streams"
+                if (nextEpisodeStreamsPrefetchKey != streamsKey) {
+                    nextEpisodeStreamsPrefetchKey = streamsKey
+                    ContinueWatchingStreamsPrefetcher.prefetchNextEpisodeStreams(
+                        type = contentType ?: parentMetaType,
+                        videoId = nextEp.videoId,
+                        parentMetaId = parentMetaId,
+                        season = nextEp.season,
+                        episode = nextEp.episode,
+                    )
+                }
+            }
+
+            if (prefetchVideo && initialLoadCompleted && playbackSnapshot.durationMs > 0L) {
+                val startDelayMs = forkSettings.nextEpisodePrefetchMinutes * 60_000L
+                val videoKey = "$nextEpisodeKey|${forkSettings.nextEpisodePrefetchMinutes}"
+                if (playbackSnapshot.positionMs >= startDelayMs &&
+                    nextEpisodeCachePrefetchKey != videoKey
+                ) {
+                    nextEpisodeCachePrefetchKey = videoKey
+                    ContinueWatchingStreamsPrefetcher.prefetchNextEpisodeVideo(
+                        type = contentType ?: parentMetaType,
+                        videoId = nextEp.videoId,
+                        parentMetaId = parentMetaId,
+                        season = nextEp.season,
+                        episode = nextEp.episode,
+                        currentVideoId = activeVideoId,
+                    )
                 }
             }
         }
@@ -947,6 +961,30 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         } else if (!shouldShow) {
             showNextEpisodeCard = false
         }
+    }
+
+    LaunchedEffect(activeVideoId) {
+        ContinueWatchingStreamsPrefetcher.onActiveVideoChanged(activeVideoId)
+    }
+
+    LaunchedEffect(
+        playbackSnapshot.isPlaying,
+        playbackSnapshot.isLoading,
+        playbackSnapshot.isEnded,
+        playbackSnapshot.positionMs / 1_000L,
+        playbackSnapshot.bufferedPositionMs / 1_000L,
+    ) {
+        val bufferedAheadMs =
+            (playbackSnapshot.bufferedPositionMs - playbackSnapshot.positionMs).coerceAtLeast(0L)
+        val pressure = when {
+            !playbackSnapshot.isPlaying || playbackSnapshot.isEnded -> false
+            playbackSnapshot.isLoading -> true
+            bufferedAheadMs <= 0L -> false
+            nextEpisodePrefetchPressure -> bufferedAheadMs < 45_000L
+            else -> bufferedAheadMs < 20_000L
+        }
+        nextEpisodePrefetchPressure = pressure
+        ContinueWatchingStreamsPrefetcher.setPlaybackPressure(pressure)
     }
 }
 

@@ -25,8 +25,9 @@ object ForkSettingsRepository {
     const val MaxPrefetchCount: Int = 20
     const val MinPrefetchTtlHours: Int = 1
     const val MaxPrefetchTtlHours: Int = 72
-    const val DefaultNextEpisodePrefetchMinutes: Int = 5
-    const val MinNextEpisodePrefetchMinutes: Int = 1
+    /** Minutes of current playback before starting the next-episode video download. */
+    const val DefaultNextEpisodePrefetchMinutes: Int = 2
+    const val MinNextEpisodePrefetchMinutes: Int = 0
     const val MaxNextEpisodePrefetchMinutes: Int = 30
 
     private val _uiState = MutableStateFlow(ForkSettingsUiState())
