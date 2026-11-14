@@ -28,6 +28,7 @@ import com.nuvio.app.features.debrid.DebridSettingsRepository
 import com.nuvio.app.features.debrid.DirectDebridPlaybackResolver
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.p2p.P2pSettingsRepository
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -303,6 +304,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
             title = chapter.title ?: stringResource(Res.string.compose_player_chapter_number, index + 1),
         )
     }
+    val forkSettings by ForkSettingsRepository.uiState.collectAsStateWithLifecycle()
     val playerControlsState = PlayerControlsState(
         chapters = controlChapters,
         chaptersLabel = stringResource(Res.string.compose_player_chapters),
@@ -533,6 +535,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         }.orEmpty(),
         nextEpisodeThumbnail = nextEpisodeForControls?.thumbnail.orEmpty(),
         nextEpisodeThumbnailBlurred = metaScreenSettingsUiState.blurUnwatchedEpisodes && nextEpisodeInfo?.isWatched == false,
+        nextEpisodeThumbnailHidden = forkSettings.nextEpisodeThumbnailHidden,
         nextEpisodeStatus = nextEpisodeStatus,
         nextEpisodeActionLabel = if (nextEpisodeForControls?.hasAired == true) {
             stringResource(Res.string.detail_btn_play)
@@ -1949,6 +1952,7 @@ private fun BoxScope.RenderPlaybackOverlays(
     suppressOpeningOverlay: Boolean,
     folded: Boolean,
 ) {
+    val forkSettings by ForkSettingsRepository.uiState.collectAsStateWithLifecycle()
     runtime.run {
         PlayerPlaybackOverlays(
             playerControlsLocked = playerControlsLocked,
@@ -1998,6 +2002,7 @@ private fun BoxScope.RenderPlaybackOverlays(
             nextEpisodeAutoPlaySourceName = nextEpisodeAutoPlaySourceName,
             nextEpisodeAutoPlayCountdown = nextEpisodeAutoPlayCountdown,
             blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
+            showNextEpisodeThumbnail = !forkSettings.nextEpisodeThumbnailHidden,
             onPlayNextEpisode = {
                 if (!partyBlocksControl()) playNextEpisode()
             },

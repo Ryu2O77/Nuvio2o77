@@ -11,6 +11,7 @@ internal actual object ForkSettingsStorage {
     private const val nextEpisodeEnabledKey = "nuvio_fork_next_episode_prefetch_enabled"
     private const val nextEpisodeVideoEnabledKey = "nuvio_fork_next_episode_video_prefetch_enabled"
     private const val nextEpisodeMinutesKey = "nuvio_fork_next_episode_prefetch_minutes"
+    private const val nextEpisodeThumbnailHiddenKey = "nuvio_fork_next_episode_thumbnail_hidden"
 
     private val defaults: NSUserDefaults
         get() = NSUserDefaults.standardUserDefaults
@@ -71,5 +72,16 @@ internal actual object ForkSettingsStorage {
 
     actual fun saveNextEpisodePrefetchMinutes(minutes: Int) {
         defaults.setInteger(minutes.toLong(), forKey = nextEpisodeMinutesKey)
+    }
+
+    actual fun loadNextEpisodeThumbnailHidden(): Boolean? =
+        if (hasKey(nextEpisodeThumbnailHiddenKey)) {
+            defaults.boolForKey(nextEpisodeThumbnailHiddenKey)
+        } else {
+            null
+        }
+
+    actual fun saveNextEpisodeThumbnailHidden(hidden: Boolean) {
+        defaults.setBool(hidden, forKey = nextEpisodeThumbnailHiddenKey)
     }
 }

@@ -144,6 +144,14 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
                 )
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
+                    title = "Ocultar miniatura del popup",
+                    description = "El aviso de siguiente episodio al final del video muestra solo el título y el botón de reproducir.",
+                    checked = forkSettings.nextEpisodeThumbnailHidden,
+                    isTablet = isTablet,
+                    onCheckedChange = ForkSettingsRepository::setNextEpisodeThumbnailHidden,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
                     title = "Cachear también el video",
                     description = "Descarga el video del próximo episodio en segundo plano. Se pausa sola si la reproducción actual necesita ancho de banda. Puede ocupar varios GB.",
                     checked = forkSettings.nextEpisodeVideoPrefetchEnabled,

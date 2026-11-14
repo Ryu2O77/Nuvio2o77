@@ -73,6 +73,7 @@ fun NextEpisodeCard(
     autoPlaySourceName: String?,
     autoPlayCountdownSec: Int?,
     blurred: Boolean,
+    showThumbnail: Boolean = true,
     onPlayNext: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -146,35 +147,37 @@ fun NextEpisodeCard(
                 .padding(horizontal = 9.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Thumbnail
-            Box(
-                modifier = Modifier
-                    .size(width = 78.dp, height = 44.dp)
-                    .clip(RoundedCornerShape(9.dp)),
-            ) {
-                AsyncImage(
-                    model = nextEpisode.thumbnail,
-                    contentDescription = stringResource(Res.string.player_next_episode_thumbnail),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (blurred) Modifier.blur(18.dp) else Modifier),
-                    contentScale = ContentScale.Crop,
-                )
+            if (showThumbnail) {
+                // Thumbnail
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.32f),
+                        .size(width = 78.dp, height = 44.dp)
+                        .clip(RoundedCornerShape(9.dp)),
+                ) {
+                    AsyncImage(
+                        model = nextEpisode.thumbnail,
+                        contentDescription = stringResource(Res.string.player_next_episode_thumbnail),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(if (blurred) Modifier.blur(18.dp) else Modifier),
+                        contentScale = ContentScale.Crop,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.32f),
+                                    ),
                                 ),
                             ),
-                        ),
-                )
-            }
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+            }
 
             // Info
             Column(

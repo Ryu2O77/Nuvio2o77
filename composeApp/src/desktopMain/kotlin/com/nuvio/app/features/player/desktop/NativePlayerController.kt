@@ -1782,6 +1782,8 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         append(',')
         appendJsonField("nextEpisodeThumbnailBlurred", nextEpisodeThumbnailBlurred)
         append(',')
+        appendJsonField("nextEpisodeThumbnailHidden", nextEpisodeThumbnailHidden)
+        append(',')
         appendJsonField("nextEpisodeStatus", nextEpisodeStatus)
         append(',')
         appendJsonField("nextEpisodeActionLabel", nextEpisodeActionLabel)

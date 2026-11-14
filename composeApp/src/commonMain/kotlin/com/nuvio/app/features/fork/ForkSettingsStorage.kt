@@ -28,4 +28,7 @@ internal expect object ForkSettingsStorage {
 
     fun loadNextEpisodePrefetchMinutes(): Int?
     fun saveNextEpisodePrefetchMinutes(minutes: Int)
+
+    fun loadNextEpisodeThumbnailHidden(): Boolean?
+    fun saveNextEpisodeThumbnailHidden(hidden: Boolean)
 }

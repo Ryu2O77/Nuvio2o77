@@ -13,6 +13,7 @@ data class ForkSettingsUiState(
     val nextEpisodePrefetchEnabled: Boolean = true,
     val nextEpisodeVideoPrefetchEnabled: Boolean = false,
     val nextEpisodePrefetchMinutes: Int = ForkSettingsRepository.DefaultNextEpisodePrefetchMinutes,
+    val nextEpisodeThumbnailHidden: Boolean = false,
 )
 
 /**
@@ -53,6 +54,7 @@ object ForkSettingsRepository {
             nextEpisodePrefetchMinutes = clampNextEpisodeMinutes(
                 ForkSettingsStorage.loadNextEpisodePrefetchMinutes() ?: DefaultNextEpisodePrefetchMinutes,
             ),
+            nextEpisodeThumbnailHidden = ForkSettingsStorage.loadNextEpisodeThumbnailHidden() ?: false,
         )
     }
 
@@ -113,6 +115,13 @@ object ForkSettingsRepository {
         if (_uiState.value.nextEpisodePrefetchMinutes == clamped) return
         _uiState.value = _uiState.value.copy(nextEpisodePrefetchMinutes = clamped)
         ForkSettingsStorage.saveNextEpisodePrefetchMinutes(clamped)
+    }
+
+    fun setNextEpisodeThumbnailHidden(hidden: Boolean) {
+        ensureLoaded()
+        if (_uiState.value.nextEpisodeThumbnailHidden == hidden) return
+        _uiState.value = _uiState.value.copy(nextEpisodeThumbnailHidden = hidden)
+        ForkSettingsStorage.saveNextEpisodeThumbnailHidden(hidden)
     }
 
     private fun clampCount(count: Int): Int = count.coerceIn(MinPrefetchCount, MaxPrefetchCount)
