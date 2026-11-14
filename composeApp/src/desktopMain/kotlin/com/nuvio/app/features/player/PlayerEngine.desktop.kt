@@ -318,7 +318,7 @@ private fun NativePlayerSurface(
     // the playback snapshot so subtitles appear/disappear close to their timing.
     LaunchedEffect(controller) {
         while (true) {
-            if (!controller.isReleasing) controller.updateControls(latestPlayerControlsState.value)
+            if (!controller.isReleasing) controller.updateControls(latestControlsState.value)
             delay(100L)
         }
     }
