@@ -307,6 +307,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
     val forkSettings by ForkSettingsRepository.uiState.collectAsStateWithLifecycle()
     val playerControlsState = PlayerControlsState(
         chapters = controlChapters,
+        chapterTitleEnabled = playerSettingsUiState.chapterTitleEnabled,
         chaptersLabel = stringResource(Res.string.compose_player_chapters),
         chaptersPanelTitle = stringResource(Res.string.compose_player_panel_chapters, chapters.size),
         chapterRemainingTemplate = stringResource(Res.string.compose_player_chapter_remaining, "{time}"),
@@ -665,7 +666,10 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
                     }
                 },
                 onError = { message ->
-                    if (message != null && tryRefreshSourceAfterError(message)) {
+                    if (message != null && tryRefreshExpiredLinkAfterError(message)) {
+                        return@PlatformPlayerSurface
+                    }
+                    if (message != null && tryFallbackToNextSourceAfterError(message)) {
                         return@PlatformPlayerSurface
                     }
                     if (message != null && !isDesktop && maybeFailoverPlaybackEngine(resolvedAutoEngine)) {

@@ -43,6 +43,8 @@ import com.nuvio.app.features.streams.BingeGroupCacheRepository
 import com.nuvio.app.features.streams.ContinueWatchingStreamsPrefetcher
 import com.nuvio.app.features.streams.AddonStreamsCache
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
+import com.nuvio.app.features.debrid.DirectDebridPlayableResult
+import com.nuvio.app.features.debrid.DirectDebridPlaybackResolver
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.hasLikelyExpiringPlaybackCredentials
 import com.nuvio.app.features.tracking.TrackingScrobbleAction
@@ -164,6 +166,16 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         PlayerStreamsRepository.clearEpisodeStreams()
         resetAddonSubtitlesIfSourceChanged()
         WatchProgressRepository.ensureLoaded()
+
+        // A source that does not finish loading within the configured time counts as failed when
+        // falling back to the next source. It has an effect only where that fallback applies.
+        val startupTimeoutSeconds = playerSettingsUiState.streamAutoPlayFallbackStartupTimeoutSeconds
+        delay(startupTimeoutSeconds * 1_000L)
+        if (!initialLoadCompleted && errorMessage == null) {
+            tryFallbackToNextSourceAfterError(
+                getString(Res.string.player_error_source_startup_timeout, startupTimeoutSeconds),
+            )
+        }
     }
 
     LaunchedEffect(
@@ -1045,49 +1057,34 @@ internal fun PlayerScreenRuntime.removeFailedStreamFromCache() {
     AddonStreamsCache.remove(cacheKey)
 }
 
-private fun PlayerScreenRuntime.isLikelyIpBoundStreamError(message: String?): Boolean {
-    val hints = buildString {
-        append(activeProviderName)
-        append(' ')
-        append(activeProviderAddonId.orEmpty())
-        append(' ')
-        append(activeStreamTitle)
-        append(' ')
-        append(activeSourceUrl.orEmpty())
-    }.lowercase()
-    if (hints.contains("elhosted")) return true
-
-    val normalized = message.orEmpty().lowercase()
-    if (normalized.isBlank()) return false
-    if (normalized.contains("elhosted")) return true
-    val mentionsIp = Regex("""\bip\b""").containsMatchIn(normalized) ||
-        normalized.contains("dirección ip") ||
-        normalized.contains("direccion ip")
-    if (!mentionsIp) return false
-    val mentionsMismatch = listOf(
-        "different", "another", "changed", "change", "mismatch", "not match",
-        "otra", "diferente", "cambió", "cambio",
-    ).any { normalized.contains(it) }
-    return mentionsMismatch
-}
-
-internal fun PlayerScreenRuntime.tryRefreshSourceAfterError(message: String?): Boolean {
+/**
+ * Fetches the playing source again from its add-on (re-resolving debrid) and continues from the
+ * same position when its link has likely expired:
+ * - a link reopened from the reuse-last-link cache, which may have expired since it was saved;
+ * - a link with expiring credentials in its URL, which may already be stale when picked from
+ *   warmed-up results or may expire during playback.
+ * Each failed URL is refreshed at most once.
+ */
+internal fun PlayerScreenRuntime.tryRefreshExpiredLinkAfterError(message: String?): Boolean {
     if (ServerStreams.isServerSourceId(activeProviderAddonId)) return retryServerSourceAfterError(message)
-    val failedUrl = activeSourceUrl
-    val ipBoundFailure = isLikelyIpBoundStreamError(message)
-    if (!ipBoundFailure && !failedUrl.hasLikelyExpiringPlaybackCredentials()) return false
     if (credentialRefreshJob?.isActive == true) return true
+    val failedUrl = activeSourceUrl
+    if (failedUrl.isBlank()) return false
+    val fromLinkCache = failedUrl == linkCacheSourceUrl
+    if (!fromLinkCache && !failedUrl.hasLikelyExpiringPlaybackCredentials()) return false
     if (credentialRefreshAttemptedSourceUrl == failedUrl) return false
 
     val currentVideoId = activeVideoId ?: return false
     credentialRefreshAttemptedSourceUrl = failedUrl
+    linkCacheSourceUrl = null
     removeFailedStreamFromCache()
 
-    val savedPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
     val expectedProviderAddonId = activeProviderAddonId
     val expectedProviderName = activeProviderName
     val expectedStreamTitle = activeStreamTitle
     val expectedBingeGroup = currentStreamBingeGroup
+    val expectedInfoHash = activeStream?.p2pInfoHash ?: currentStreamInfoHash
+    val expectedFilename = activeStream?.behaviorHints?.filename ?: currentStreamFilename
     val type = contentType ?: parentMetaType
     val season = activeSeasonNumber
     val episode = activeEpisodeNumber
@@ -1117,6 +1114,8 @@ internal fun PlayerScreenRuntime.tryRefreshSourceAfterError(message: String?): B
                     expectedProviderName = expectedProviderName,
                     expectedStreamTitle = expectedStreamTitle,
                     expectedBingeGroup = expectedBingeGroup,
+                    expectedInfoHash = expectedInfoHash,
+                    expectedFilename = expectedFilename,
                 )
                 if (
                     refreshedStream != null ||
@@ -1129,41 +1128,35 @@ internal fun PlayerScreenRuntime.tryRefreshSourceAfterError(message: String?): B
                 pollCount++
             }
 
-            val stream = refreshedStream
-            if (stream == null) {
-                errorMessage = message
-                controlsVisible = !playerControlsLocked
+            val candidate = refreshedStream
+            if (candidate == null) {
+                showErrorUnlessSourceFallback(message)
                 return@launch
+            }
+            // Debrid links are always requested anew; a prepared or in-memory one may be the expired link.
+            val unresolved = if (candidate.debridResolved) candidate.copy(url = null, debridResolved = false) else candidate
+            val stream = when (
+                val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
+                    stream = unresolved,
+                    season = season,
+                    episode = episode,
+                    forceRefresh = true,
+                )
+            ) {
+                is DirectDebridPlayableResult.Success -> resolved.stream
+                else -> {
+                    showErrorUnlessSourceFallback(message)
+                    return@launch
+                }
             }
 
             val refreshedUrl = stream.playableDirectUrl
             if (refreshedUrl.isNullOrBlank() || refreshedUrl == failedUrl) {
-                errorMessage = message
-                controlsVisible = !playerControlsLocked
+                showErrorUnlessSourceFallback(message)
                 return@launch
             }
 
-            flushWatchProgress()
-            stopActiveP2pStream()
-            activeSourceUrl = refreshedUrl
-            activeSourceAudioUrl = null
-            activeSourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
-            activeSourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response)
-            activeStreamType = stream.streamType
-            activeStreamTitle = stream.streamLabel
-            activeStreamSubtitle = stream.streamSubtitle
-            activeStreamFilename = streamPlaybackFilename(stream, refreshedUrl)
-            activeProviderName = stream.addonName
-            activeProviderAddonId = stream.addonId
-            activeStream = stream
-            currentStreamBingeGroup = stream.behaviorHints.bingeGroup
-            activeSubtitleExtras = SubtitleRequestExtras.from(stream.behaviorHints, refreshedUrl)
-            currentStreamFilename = stream.behaviorHints.filename
-            currentStreamInfoHash = stream.infoHash
-            activeInitialPositionMs = savedPositionMs
-            activeInitialProgressFraction = null
-            showSourcesPanel = false
-            controlsVisible = true
+            playReplacementSource(stream, refreshedUrl, currentVideoId)
         } finally {
             PlayerStreamsRepository.stopSourcesLoading()
         }
@@ -1194,19 +1187,22 @@ private fun PlayerScreenRuntime.retryServerSourceAfterError(message: String?): B
     return true
 }
 
-private fun findCredentialRefreshCandidate(
+internal fun findCredentialRefreshCandidate(
     streams: List<StreamItem>,
     failedUrl: String,
     expectedProviderAddonId: String?,
     expectedProviderName: String,
     expectedStreamTitle: String,
     expectedBingeGroup: String?,
+    expectedInfoHash: String? = null,
+    expectedFilename: String? = null,
+    canResolveDebrid: (StreamItem) -> Boolean = DirectDebridPlaybackResolver::shouldResolveToPlayableStream,
 ): StreamItem? =
     streams
         .asSequence()
         .mapNotNull { stream ->
-            val refreshedUrl = stream.playableDirectUrl?.takeIf { it.isNotBlank() && it != failedUrl }
-                ?: return@mapNotNull null
+            val hasFreshUrl = stream.playableDirectUrl?.let { it.isNotBlank() && it != failedUrl } == true
+            if (!hasFreshUrl && !stream.debridResolved && !canResolveDebrid(stream)) return@mapNotNull null
             val providerMatches = if (!expectedProviderAddonId.isNullOrBlank()) {
                 stream.addonId == expectedProviderAddonId
             } else {
@@ -1215,11 +1211,15 @@ private fun findCredentialRefreshCandidate(
             if (!providerMatches) return@mapNotNull null
 
             var score = 100
+            if (!expectedInfoHash.isNullOrBlank() && stream.p2pInfoHash.equals(expectedInfoHash, ignoreCase = true)) {
+                score += 60
+            }
             if (stream.streamLabel == expectedStreamTitle) score += 40
+            if (!expectedFilename.isNullOrBlank() && stream.behaviorHints.filename == expectedFilename) score += 30
             if (!expectedBingeGroup.isNullOrBlank() && stream.behaviorHints.bingeGroup == expectedBingeGroup) {
                 score += 20
             }
-            if (refreshedUrl.hasLikelyExpiringPlaybackCredentials()) score += 5
+            if (stream.playableDirectUrl?.hasLikelyExpiringPlaybackCredentials() == true) score += 5
             score to stream
         }
         .maxByOrNull { (score, _) -> score }
