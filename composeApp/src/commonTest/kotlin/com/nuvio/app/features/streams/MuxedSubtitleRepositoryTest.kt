@@ -45,6 +45,15 @@ class MuxedSubtitleRepositoryTest {
         assertEquals(listOf("ESP"), tracks.visibleLabels(setOf("ESP")))
         assertEquals(emptyList(), tracks.visibleLabels(setOf("FRA")))
         assertEquals(emptyList(), MuxedSubtitleResult.NoTracks.visibleLabels(emptySet()))
-        assertEquals(emptyList(), MuxedSubtitleResult.Unavailable.visibleLabels(setOf("ESP")))
+        assertEquals(emptyList(), MuxedSubtitleResult.Unavailable().visibleLabels(setOf("ESP")))
+    }
+
+    @Test
+    fun `unavailable results carry the reason of the failure`() {
+        assertEquals(
+            MuxedSubtitleFailure.DebridUnavailable,
+            MuxedSubtitleResult.Unavailable(MuxedSubtitleFailure.DebridUnavailable).reason,
+        )
+        assertEquals(MuxedSubtitleFailure.Unreadable, MuxedSubtitleResult.Unavailable().reason)
     }
 }

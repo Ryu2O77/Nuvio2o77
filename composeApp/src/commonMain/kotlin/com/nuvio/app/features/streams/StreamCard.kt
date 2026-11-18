@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.core.ui.secondaryClickAt
 import com.nuvio.app.core.ui.nuvioDesktopDragScroll
 import com.nuvio.app.core.ui.SkeletonBlock
@@ -82,6 +83,8 @@ internal fun StreamCard(
     outlined: Boolean = false,
     muxedSubtitleButtonEnabled: Boolean = false,
     muxedSubtitleLanguages: Set<String> = emptySet(),
+    seasonNumber: Int? = null,
+    episodeNumber: Int? = null,
 ) {
     val partyLabel = if (isCurrent) null else LocalStreamHighlight.current(stream)
     val cardShape = RoundedCornerShape(12.dp)
@@ -94,6 +97,14 @@ internal fun StreamCard(
     val muxedSubtitleLabels = muxedSubtitleResult
         ?.visibleLabels(muxedSubtitleLanguages)
         .orEmpty()
+    val hiddenMuxedSubtitleCount = if (muxedSubtitleLanguages.isEmpty()) {
+        0
+    } else {
+        (muxedSubtitleResult as? MuxedSubtitleResult.Tracks)
+            ?.labels
+            ?.count { it !in muxedSubtitleLanguages }
+            ?: 0
+    }
     val muxedSubtitleScope = rememberCoroutineScope()
     val hasBadges = badgeImages.isNotEmpty() ||
         muxedSubtitleLabels.isNotEmpty() ||
@@ -213,12 +224,26 @@ internal fun StreamCard(
             MuxedSubtitleProbeButton(
                 isProbing = isProbingMuxedSubtitles,
                 result = muxedSubtitleResult,
+                hiddenLabels = hiddenMuxedSubtitleCount,
                 onClick = {
                     if (isProbingMuxedSubtitles) return@MuxedSubtitleProbeButton
                     isProbingMuxedSubtitles = true
                     muxedSubtitleScope.launch {
-                        muxedSubtitleResult = MuxedSubtitleRepository.probe(stream, force = true)
-                        isProbingMuxedSubtitles = false
+                        try {
+                            val result = MuxedSubtitleRepository.probe(
+                                stream = stream,
+                                season = seasonNumber,
+                                episode = episodeNumber,
+                                force = muxedSubtitleResult == null ||
+                                    muxedSubtitleResult is MuxedSubtitleResult.Unavailable,
+                            )
+                            muxedSubtitleResult = result
+                            (result as? MuxedSubtitleResult.Unavailable)?.reason?.let { reason ->
+                                NuvioToastController.show(muxedSubtitleFailureText(reason))
+                            }
+                        } finally {
+                            isProbingMuxedSubtitles = false
+                        }
                     }
                 },
             )
@@ -305,12 +330,14 @@ private fun StreamCardBadgeRow(
 private fun MuxedSubtitleProbeButton(
     isProbing: Boolean,
     result: MuxedSubtitleResult?,
+    hiddenLabels: Int,
     onClick: () -> Unit,
 ) {
     val text = when {
         isProbing -> "SUBS…"
         result is MuxedSubtitleResult.NoTracks -> "SIN SUBS"
         result is MuxedSubtitleResult.Unavailable -> "SUBS ?"
+        result is MuxedSubtitleResult.Tracks && hiddenLabels > 0 -> "SUBS +$hiddenLabels"
         else -> "SUBS"
     }
     val alpha = if (isProbing) 0.4f else 0.75f
@@ -332,6 +359,13 @@ private fun MuxedSubtitleProbeButton(
             maxLines = 1,
         )
     }
+}
+
+private fun muxedSubtitleFailureText(reason: MuxedSubtitleFailure): String = when (reason) {
+    MuxedSubtitleFailure.NoSource -> "Este stream no tiene enlace para leer el archivo"
+    MuxedSubtitleFailure.DebridUnavailable ->
+        "El debrid no entregó el enlace todavía (torrent no listo o sin cache)"
+    MuxedSubtitleFailure.Unreadable -> "No se pudo leer el archivo (formato o servidor sin soporte)"
 }
 
 @Composable

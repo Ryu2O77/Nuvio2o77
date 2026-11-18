@@ -529,6 +529,8 @@ private fun MobileStreamsLayout(
                     onStreamSecondaryClick = onStreamSecondaryClick,
                     resumePositionMs = resumePositionMs,
                     resumeProgressFraction = resumeProgressFraction,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -773,6 +775,8 @@ internal fun StreamList(
     onStreamSecondaryClick: (StreamItem, Offset) -> Unit,
     resumePositionMs: Long?,
     resumeProgressFraction: Float?,
+    seasonNumber: Int? = null,
+    episodeNumber: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     val filteredGroups = uiState.filteredGroups
@@ -835,6 +839,8 @@ internal fun StreamList(
                             badgePlacement = streamBadgeSettings.badgePlacement,
                             muxedSubtitleButtonEnabled = forkSettings.muxedSubtitleBadgeEnabled,
                             muxedSubtitleLanguages = forkSettings.muxedSubtitleLanguages,
+                            seasonNumber = seasonNumber,
+                            episodeNumber = episodeNumber,
                             onClick = { onStreamSelected(shared.stream, resumePositionMs, resumeProgressFraction) },
                             outlined = true,
                         )
@@ -873,6 +879,8 @@ internal fun StreamList(
                             badgePlacement = streamBadgeSettings.badgePlacement,
                             muxedSubtitleButtonEnabled = forkSettings.muxedSubtitleBadgeEnabled,
                             muxedSubtitleLanguages = forkSettings.muxedSubtitleLanguages,
+                            seasonNumber = seasonNumber,
+                            episodeNumber = episodeNumber,
                             torrentNotSupportedText = torrentNotSupportedText,
                             fetchingText = fetchingText,
                             onStreamSelected = onStreamSelected,
@@ -957,6 +965,8 @@ private fun LazyListScope.streamSection(
     badgePlacement: StreamBadgePlacement,
     muxedSubtitleButtonEnabled: Boolean,
     muxedSubtitleLanguages: Set<String>,
+    seasonNumber: Int?,
+    episodeNumber: Int?,
     torrentNotSupportedText: String,
     fetchingText: String,
     onStreamSelected: (stream: StreamItem, resumePositionMs: Long?, resumeProgressFraction: Float?) -> Unit,
@@ -1011,6 +1021,8 @@ private fun LazyListScope.streamSection(
                 badgePlacement = badgePlacement,
                 muxedSubtitleButtonEnabled = muxedSubtitleButtonEnabled,
                 muxedSubtitleLanguages = muxedSubtitleLanguages,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
                 onClick = {
                     if (isSelectable) {
                         onStreamSelected(stream, resumePositionMs, resumeProgressFraction)

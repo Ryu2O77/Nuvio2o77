@@ -293,6 +293,8 @@ internal fun TabletStreamsLayout(
                         onStreamSecondaryClick = onStreamSecondaryClick,
                         resumePositionMs = resumePositionMs,
                         resumeProgressFraction = resumeProgressFraction,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -472,6 +474,8 @@ private fun LegacyTabletStreamsLayout(
                                 onStreamSecondaryClick = onStreamSecondaryClick,
                                 resumePositionMs = resumePositionMs,
                                 resumeProgressFraction = resumeProgressFraction,
+                                seasonNumber = seasonNumber,
+                                episodeNumber = episodeNumber,
                                 modifier = Modifier.weight(1f),
                             )
                         }

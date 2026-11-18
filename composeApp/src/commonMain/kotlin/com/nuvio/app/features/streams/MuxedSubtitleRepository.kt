@@ -18,10 +18,24 @@ internal sealed interface MuxedSubtitleResult {
     data object NoTracks : MuxedSubtitleResult
 
     /** The container could not be read: no range support, unsupported format, timeout... */
-    data object Unavailable : MuxedSubtitleResult
+    data class Unavailable(
+        val reason: MuxedSubtitleFailure = MuxedSubtitleFailure.Unreadable,
+    ) : MuxedSubtitleResult
 
     /** Short language labels such as `ESP` or `ENG`, in the order the file declares them. */
     data class Tracks(val labels: List<String>) : MuxedSubtitleResult
+}
+
+/** Why a stream could not be inspected, so the row can say something more useful than "?". */
+internal enum class MuxedSubtitleFailure {
+    /** No HTTP source at all: a torrent with no debrid configured. */
+    NoSource,
+
+    /** The debrid service could not hand out a link (not cached yet, missing key, API error). */
+    DebridUnavailable,
+
+    /** The link was reachable but the container could not be parsed. */
+    Unreadable,
 }
 
 /**
@@ -61,27 +75,32 @@ internal object MuxedSubtitleRepository {
         synchronized(lock) { cache.clear() }
     }
 
-    suspend fun probe(stream: StreamItem, force: Boolean = false): MuxedSubtitleResult {
-        val key = cacheKey(stream) ?: return MuxedSubtitleResult.Unavailable
+    suspend fun probe(
+        stream: StreamItem,
+        season: Int? = null,
+        episode: Int? = null,
+        force: Boolean = false,
+    ): MuxedSubtitleResult {
+        val key = cacheKey(stream) ?: return MuxedSubtitleResult.Unavailable(MuxedSubtitleFailure.NoSource)
         if (!force) cached(stream)?.let { return it }
 
         val target = try {
-            withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { resolveTarget(stream) }
+            withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { resolveTarget(stream, season, episode) }
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (_: Exception) {
             null
-        } ?: return MuxedSubtitleResult.Unavailable
+        } ?: return MuxedSubtitleResult.Unavailable(MuxedSubtitleFailure.DebridUnavailable)
 
         val result = try {
             when (val tracks = EmbeddedSubtitleTimelineLoader.probeSubtitleTracks(target.url, target.headers)) {
-                null -> MuxedSubtitleResult.Unavailable
+                null -> MuxedSubtitleResult.Unavailable(MuxedSubtitleFailure.Unreadable)
                 else -> tracksToResult(tracks)
             }
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (_: Exception) {
-            MuxedSubtitleResult.Unavailable
+            MuxedSubtitleResult.Unavailable(MuxedSubtitleFailure.Unreadable)
         }
 
         synchronized(lock) {
@@ -98,11 +117,11 @@ internal object MuxedSubtitleRepository {
      * Finds the HTTP source to inspect: the stream's own link, the debrid link the list already
      * prepared, or one resolved on demand. Torrents with no debrid setup return null.
      */
-    private suspend fun resolveTarget(stream: StreamItem): ProbeTarget? {
+    private suspend fun resolveTarget(stream: StreamItem, season: Int?, episode: Int?): ProbeTarget? {
         stream.probeTarget()?.let { return it }
 
         val prepared = try {
-            DirectDebridPlaybackResolver.cachedPlayableStream(stream, season = null, episode = null)
+            DirectDebridPlaybackResolver.cachedPlayableStream(stream, season, episode)
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (_: Exception) {
@@ -113,8 +132,8 @@ internal object MuxedSubtitleRepository {
         if (!DirectDebridPlaybackResolver.shouldResolveToPlayableStream(stream)) return null
         val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
             stream = stream,
-            season = null,
-            episode = null,
+            season = season,
+            episode = episode,
         )
         val resolvedStream = (resolved as? DirectDebridPlayableResult.Success)?.stream ?: return null
         return resolvedStream.probeTarget()
@@ -224,6 +243,7 @@ internal val MuxedSubtitleLanguageOptions: List<MuxedSubtitleLanguageOption> = l
     MuxedSubtitleLanguageOption("SRP", "Serbio"),
     MuxedSubtitleLanguageOption("SLK", "Eslovaco"),
     MuxedSubtitleLanguageOption("SLV", "Esloveno"),
+    MuxedSubtitleLanguageOption("SUB", "Sin idioma (SUB)"),
 )
 
 /**
