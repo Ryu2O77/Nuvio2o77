@@ -31,4 +31,11 @@ internal expect object ForkSettingsStorage {
 
     fun loadNextEpisodeThumbnailHidden(): Boolean?
     fun saveNextEpisodeThumbnailHidden(hidden: Boolean)
+
+    fun loadMuxedSubtitleBadgeEnabled(): Boolean?
+    fun saveMuxedSubtitleBadgeEnabled(enabled: Boolean)
+
+    /** Comma-separated language labels, or an empty string for "every language". */
+    fun loadMuxedSubtitleLanguages(): String?
+    fun saveMuxedSubtitleLanguages(codes: String)
 }

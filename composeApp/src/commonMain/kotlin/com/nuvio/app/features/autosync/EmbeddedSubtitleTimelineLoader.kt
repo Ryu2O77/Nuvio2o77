@@ -12,6 +12,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.math.max
@@ -55,6 +56,12 @@ internal object EmbeddedSubtitleTimelineLoader {
     private const val MAX_MP4_TOP_LEVEL_BOXES = 64
     private const val MP4_BOX_HEADER_BYTES = 16
     private const val MP4_TYPE_moov = 0x6D6F6F76
+
+    // On-demand track listing for the stream list: only the Tracks element (or moov) is read.
+    private const val PROBE_TIMEOUT_MS = 8_000L
+    private const val PROBE_MAX_TOTAL_BYTES = 8L * 1024L * 1024L
+    private const val PROBE_MAX_REQUESTS = 8
+    private const val PROBE_MAX_MOOV_BYTES = 8 * 1024 * 1024
 
     // Top-level Matroska/EBML IDs.
     private const val ID_EBML = 0x1A45DFA3L
@@ -157,6 +164,186 @@ internal object EmbeddedSubtitleTimelineLoader {
             }
         }
     }
+
+    /** One subtitle track of a container, read without indexing its cues. */
+    internal data class EmbeddedSubtitleTrackInfo(
+        val languageTag: String?,
+        val name: String?,
+        val codecId: String?,
+        val forced: Boolean,
+        val commentary: Boolean,
+    )
+
+    /**
+     * Reads only the subtitle track list of [sourceUrl], without building a cue index. Meant for
+     * on-demand hints in the stream list, so it uses a small byte budget and returns null whenever
+     * the container cannot be read (no range support, unsupported format, timeout...).
+     *
+     * Null means "could not determine"; an empty list means "the container has no subtitle tracks".
+     */
+    suspend fun probeSubtitleTracks(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String> = emptyMap(),
+        timeoutMs: Long = PROBE_TIMEOUT_MS,
+    ): List<EmbeddedSubtitleTrackInfo>? {
+        if (!sourceUrl.startsWith("http://", ignoreCase = true) &&
+            !sourceUrl.startsWith("https://", ignoreCase = true)
+        ) {
+            return null
+        }
+        return try {
+            withTimeoutOrNull(timeoutMs) {
+                withContext(Dispatchers.IO) {
+                    probeTracksOnly(sourceUrl, sourceHeaders)
+                }
+            }
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private suspend fun probeTracksOnly(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String>,
+    ): List<EmbeddedSubtitleTrackInfo>? {
+        val stats = RangeStats(
+            deadlineNs = autoSyncNanoTime() + PROBE_TIMEOUT_MS * 1_000_000L,
+            maxBytes = PROBE_MAX_TOTAL_BYTES,
+            maxRequests = PROBE_MAX_REQUESTS,
+        )
+        val initial = fetchRange(
+            sourceUrl = sourceUrl,
+            sourceHeaders = sourceHeaders,
+            start = 0L,
+            length = INITIAL_PROBE_BYTES,
+            requirePartialContent = false,
+            stats = stats,
+        ) ?: return null
+
+        val segment = findSegment(initial.bytes)
+        if (segment == null) {
+            return probeMp4Tracks(
+                sourceUrl = sourceUrl,
+                sourceHeaders = sourceHeaders,
+                initial = initial,
+                stats = stats,
+            )
+        }
+
+        // Same SeekHead resolution as the cue index, minus Info and Cues.
+        val segmentDataStart = segment.dataStart.toLong()
+        val directPositions = findInitialTopLevelPositions(
+            bytes = initial.bytes,
+            segment = segment,
+        )
+        val resolvedPositions = mutableMapOf<Long, Long>()
+        directPositions.forEach { (id, position) -> resolvedPositions.autoSyncPutIfAbsent(id, position) }
+
+        val seekHeadQueue = ArrayDeque<Long>()
+        directPositions[ID_SEEK_HEAD]?.let(seekHeadQueue::addLast)
+        val visitedSeekHeads = mutableSetOf<Long>()
+        var seekHeadHops = 0
+        while (seekHeadQueue.isNotEmpty() && seekHeadHops < MAX_SEEK_HEAD_HOPS) {
+            val seekHeadPosition = seekHeadQueue.removeFirst()
+            if (!visitedSeekHeads.add(seekHeadPosition)) continue
+            seekHeadHops++
+
+            val seekHeadBytes = extractElementFromInitialProbe(
+                initialBytes = initial.bytes,
+                absolutePosition = seekHeadPosition,
+                expectedId = ID_SEEK_HEAD,
+                maxElementBytes = MAX_SEEK_HEAD_BYTES,
+            ) ?: fetchElementAt(
+                sourceUrl = sourceUrl,
+                sourceHeaders = sourceHeaders,
+                absolutePosition = seekHeadPosition,
+                expectedId = ID_SEEK_HEAD,
+                maxElementBytes = MAX_SEEK_HEAD_BYTES,
+                stats = stats,
+            ) ?: continue
+
+            parseSeekHead(seekHeadBytes).forEach { (id, relativePosition) ->
+                val absolute = segmentDataStart + relativePosition
+                if (resolvedPositions.autoSyncPutIfAbsent(id, absolute) == null && id == ID_SEEK_HEAD) {
+                    seekHeadQueue.addLast(absolute)
+                } else if (id == ID_SEEK_HEAD && absolute !in visitedSeekHeads) {
+                    seekHeadQueue.addLast(absolute)
+                }
+            }
+        }
+
+        val tracksPosition = resolvedPositions[ID_TRACKS] ?: directPositions[ID_TRACKS] ?: return null
+        val tracksBytes = extractElementFromInitialProbe(
+            initialBytes = initial.bytes,
+            absolutePosition = tracksPosition,
+            expectedId = ID_TRACKS,
+            maxElementBytes = MAX_TRACKS_BYTES,
+        ) ?: fetchElementAt(
+            sourceUrl = sourceUrl,
+            sourceHeaders = sourceHeaders,
+            absolutePosition = tracksPosition,
+            expectedId = ID_TRACKS,
+            maxElementBytes = MAX_TRACKS_BYTES,
+            stats = stats,
+        ) ?: return null
+
+        return parseSubtitleTracks(tracksBytes).map(::toEmbeddedSubtitleTrackInfo)
+    }
+
+    private suspend fun probeMp4Tracks(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String>,
+        initial: RangeResponse,
+        stats: RangeStats,
+    ): List<EmbeddedSubtitleTrackInfo>? {
+        val location = findMp4Moov(
+            sourceUrl = sourceUrl,
+            sourceHeaders = sourceHeaders,
+            initial = initial,
+            stats = stats,
+        ) ?: return null
+        if (location.position < 0L || location.size <= 0L) return null
+        if (location.size > PROBE_MAX_MOOV_BYTES.toLong()) return null
+        if (location.position > Long.MAX_VALUE - location.size) return null
+
+        val moovEnd = location.position + location.size
+        val moovBytes = if (moovEnd <= initial.bytes.size.toLong()) {
+            initial.bytes.copyOfRange(location.position.toInt(), moovEnd.toInt())
+        } else {
+            fetchRange(
+                sourceUrl = sourceUrl,
+                sourceHeaders = sourceHeaders,
+                start = location.position,
+                length = location.size.toInt(),
+                requirePartialContent = location.position > 0L,
+                stats = stats,
+                requireExactLength = true,
+            )?.bytes ?: return null
+        }
+
+        val index = Mp4SubtitleSampleTables.parse(moovBytes) ?: return null
+        return index.tables.map { table ->
+            EmbeddedSubtitleTrackInfo(
+                languageTag = table.language,
+                name = null,
+                codecId = table.codec.name,
+                forced = false,
+                commentary = false,
+            )
+        }
+    }
+
+    private fun toEmbeddedSubtitleTrackInfo(track: MatroskaSubtitleTrack): EmbeddedSubtitleTrackInfo =
+        EmbeddedSubtitleTrackInfo(
+            languageTag = track.languageIetf?.takeIf { it.isNotBlank() }
+                ?: track.language?.takeIf { it.isNotBlank() },
+            name = track.name?.takeIf { it.isNotBlank() },
+            codecId = track.codecId,
+            forced = track.forced,
+            commentary = track.commentary,
+        )
 
     private suspend fun loadAndCache(
         cacheKey: String,

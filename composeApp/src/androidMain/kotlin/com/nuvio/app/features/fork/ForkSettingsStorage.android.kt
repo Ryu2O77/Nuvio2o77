@@ -14,6 +14,8 @@ internal actual object ForkSettingsStorage {
     private const val nextEpisodeVideoEnabledKey = "next_episode_video_prefetch_enabled"
     private const val nextEpisodeMinutesKey = "next_episode_prefetch_minutes"
     private const val nextEpisodeThumbnailHiddenKey = "next_episode_thumbnail_hidden"
+    private const val muxedSubtitleBadgeEnabledKey = "muxed_subtitle_badge_enabled"
+    private const val muxedSubtitleLanguagesKey = "muxed_subtitle_languages"
 
     private var preferences: SharedPreferences? = null
 
@@ -104,5 +106,27 @@ internal actual object ForkSettingsStorage {
 
     actual fun saveNextEpisodeThumbnailHidden(hidden: Boolean) {
         preferences?.edit()?.putBoolean(nextEpisodeThumbnailHiddenKey, hidden)?.apply()
+    }
+
+    actual fun loadMuxedSubtitleBadgeEnabled(): Boolean? =
+        preferences?.let { prefs ->
+            if (prefs.contains(muxedSubtitleBadgeEnabledKey)) {
+                prefs.getBoolean(muxedSubtitleBadgeEnabledKey, true)
+            } else {
+                null
+            }
+        }
+
+    actual fun saveMuxedSubtitleBadgeEnabled(enabled: Boolean) {
+        preferences?.edit()?.putBoolean(muxedSubtitleBadgeEnabledKey, enabled)?.apply()
+    }
+
+    actual fun loadMuxedSubtitleLanguages(): String? =
+        preferences?.let { prefs ->
+            if (prefs.contains(muxedSubtitleLanguagesKey)) prefs.getString(muxedSubtitleLanguagesKey, "") else null
+        }
+
+    actual fun saveMuxedSubtitleLanguages(codes: String) {
+        preferences?.edit()?.putString(muxedSubtitleLanguagesKey, codes)?.apply()
     }
 }

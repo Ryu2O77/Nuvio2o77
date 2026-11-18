@@ -14,6 +14,10 @@ data class ForkSettingsUiState(
     val nextEpisodeVideoPrefetchEnabled: Boolean = false,
     val nextEpisodePrefetchMinutes: Int = ForkSettingsRepository.DefaultNextEpisodePrefetchMinutes,
     val nextEpisodeThumbnailHidden: Boolean = false,
+    /** Shows the on-demand "SUBS" button in each stream row. */
+    val muxedSubtitleBadgeEnabled: Boolean = true,
+    /** Labels to keep once the tracks are read; empty means every language. */
+    val muxedSubtitleLanguages: Set<String> = emptySet(),
 )
 
 /**
@@ -55,6 +59,10 @@ object ForkSettingsRepository {
                 ForkSettingsStorage.loadNextEpisodePrefetchMinutes() ?: DefaultNextEpisodePrefetchMinutes,
             ),
             nextEpisodeThumbnailHidden = ForkSettingsStorage.loadNextEpisodeThumbnailHidden() ?: false,
+            muxedSubtitleBadgeEnabled = ForkSettingsStorage.loadMuxedSubtitleBadgeEnabled() ?: true,
+            muxedSubtitleLanguages = parseLanguageCodes(
+                ForkSettingsStorage.loadMuxedSubtitleLanguages(),
+            ),
         )
     }
 
@@ -123,6 +131,38 @@ object ForkSettingsRepository {
         _uiState.value = _uiState.value.copy(nextEpisodeThumbnailHidden = hidden)
         ForkSettingsStorage.saveNextEpisodeThumbnailHidden(hidden)
     }
+
+    fun setMuxedSubtitleBadgeEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (_uiState.value.muxedSubtitleBadgeEnabled == enabled) return
+        _uiState.value = _uiState.value.copy(muxedSubtitleBadgeEnabled = enabled)
+        ForkSettingsStorage.saveMuxedSubtitleBadgeEnabled(enabled)
+    }
+
+    fun toggleMuxedSubtitleLanguage(code: String) {
+        ensureLoaded()
+        val normalized = code.trim().uppercase()
+        if (normalized.isEmpty()) return
+        val current = _uiState.value.muxedSubtitleLanguages
+        val next = if (normalized in current) current - normalized else current + normalized
+        _uiState.value = _uiState.value.copy(muxedSubtitleLanguages = next)
+        ForkSettingsStorage.saveMuxedSubtitleLanguages(next.sorted().joinToString(","))
+    }
+
+    fun clearMuxedSubtitleLanguages() {
+        ensureLoaded()
+        if (_uiState.value.muxedSubtitleLanguages.isEmpty()) return
+        _uiState.value = _uiState.value.copy(muxedSubtitleLanguages = emptySet())
+        ForkSettingsStorage.saveMuxedSubtitleLanguages("")
+    }
+
+    private fun parseLanguageCodes(raw: String?): Set<String> =
+        raw
+            ?.split(',')
+            ?.map { it.trim().uppercase() }
+            ?.filter { it.isNotEmpty() }
+            ?.toSet()
+            .orEmpty()
 
     private fun clampCount(count: Int): Int = count.coerceIn(MinPrefetchCount, MaxPrefetchCount)
 

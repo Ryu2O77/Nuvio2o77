@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -52,6 +54,7 @@ import com.nuvio.app.core.ui.nuvioDesktopDragScroll
 import com.nuvio.app.core.ui.SkeletonBlock
 import com.nuvio.app.features.debrid.DebridProviders
 import com.nuvio.app.isDesktop
+import kotlinx.coroutines.launch
 
 internal val LocalStreamHighlight = staticCompositionLocalOf<(StreamItem) -> String?> { { null } }
 
@@ -77,11 +80,24 @@ internal fun StreamCard(
     isCurrent: Boolean = false,
     currentLabel: String? = null,
     outlined: Boolean = false,
+    muxedSubtitleButtonEnabled: Boolean = false,
+    muxedSubtitleLanguages: Set<String> = emptySet(),
 ) {
     val partyLabel = if (isCurrent) null else LocalStreamHighlight.current(stream)
     val cardShape = RoundedCornerShape(12.dp)
     val badgeImages = stream.badges.filter { it.imageURL.isNotBlank() }
-    val hasBadges = badgeImages.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints.videoSize != null)
+    val canProbeMuxedSubtitles = muxedSubtitleButtonEnabled && stream.canProbeMuxedSubtitles()
+    var muxedSubtitleResult by remember(stream.playableDirectUrl) {
+        mutableStateOf(MuxedSubtitleRepository.cached(stream))
+    }
+    var isProbingMuxedSubtitles by remember(stream.playableDirectUrl) { mutableStateOf(false) }
+    val muxedSubtitleLabels = muxedSubtitleResult
+        ?.visibleLabels(muxedSubtitleLanguages)
+        .orEmpty()
+    val muxedSubtitleScope = rememberCoroutineScope()
+    val hasBadges = badgeImages.isNotEmpty() ||
+        muxedSubtitleLabels.isNotEmpty() ||
+        (showFileSizeBadges && stream.behaviorHints.videoSize != null)
     var cardPositionInRoot by remember { mutableStateOf(Offset.Zero) }
     Row(
         modifier = modifier
@@ -142,6 +158,7 @@ internal fun StreamCard(
                     badgeImages = badgeImages,
                     stream = stream,
                     showFileSizeBadges = showFileSizeBadges,
+                    muxedSubtitleLabels = muxedSubtitleLabels,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
             }
@@ -186,8 +203,25 @@ internal fun StreamCard(
                     badgeImages = badgeImages,
                     stream = stream,
                     showFileSizeBadges = showFileSizeBadges,
+                    muxedSubtitleLabels = muxedSubtitleLabels,
                 )
             }
+        }
+
+        if (canProbeMuxedSubtitles && muxedSubtitleLabels.isEmpty()) {
+            Spacer(modifier = Modifier.width(10.dp))
+            MuxedSubtitleProbeButton(
+                isProbing = isProbingMuxedSubtitles,
+                result = muxedSubtitleResult,
+                onClick = {
+                    if (isProbingMuxedSubtitles) return@MuxedSubtitleProbeButton
+                    isProbingMuxedSubtitles = true
+                    muxedSubtitleScope.launch {
+                        muxedSubtitleResult = MuxedSubtitleRepository.probe(stream, force = true)
+                        isProbingMuxedSubtitles = false
+                    }
+                },
+            )
         }
 
         if (showAddonLogo) {
@@ -239,6 +273,7 @@ private fun StreamCardBadgeRow(
     badgeImages: List<StreamBadge>,
     stream: StreamItem,
     showFileSizeBadges: Boolean,
+    muxedSubtitleLabels: List<String> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -250,12 +285,76 @@ private fun StreamCardBadgeRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        muxedSubtitleLabels.forEach { label ->
+            MuxedSubtitleChip(label = label)
+        }
         badgeImages.forEach { badge ->
             StreamBadgeImage(badge = badge)
         }
         if (showFileSizeBadges) {
             StreamFileSizeBadge(stream = stream)
         }
+    }
+}
+
+/**
+ * On-demand probe of the subtitle tracks muxed into one file. Nothing is downloaded until the
+ * user presses it, so the stream list never reads every source on its own.
+ */
+@Composable
+private fun MuxedSubtitleProbeButton(
+    isProbing: Boolean,
+    result: MuxedSubtitleResult?,
+    onClick: () -> Unit,
+) {
+    val text = when {
+        isProbing -> "SUBS…"
+        result is MuxedSubtitleResult.NoTracks -> "SIN SUBS"
+        result is MuxedSubtitleResult.Unavailable -> "SUBS ?"
+        else -> "SUBS"
+    }
+    val alpha = if (isProbing) 0.4f else 0.75f
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+            .clickable(enabled = !isProbing, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = text,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.4.sp,
+            color = Color.White.copy(alpha = alpha),
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun MuxedSubtitleChip(label: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(999.dp),
+            )
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+        )
     }
 }
 

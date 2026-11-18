@@ -3,7 +3,10 @@ package com.nuvio.app.features.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -11,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.DialogButton
@@ -23,6 +27,7 @@ import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.player.AnimeUpscalerMode
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.streams.ContinueWatchingStreamsPrefetcher
+import com.nuvio.app.features.streams.MuxedSubtitleLanguageOptions
 import com.nuvio.app.isWindows
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_done
@@ -51,6 +56,7 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
     var showPrefetchCountDialog by remember { mutableStateOf(false) }
     var showPrefetchTtlDialog by remember { mutableStateOf(false) }
     var showNextEpisodeMinutesDialog by remember { mutableStateOf(false) }
+    var showMuxedSubtitleLanguagesDialog by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(if (isTablet) 18.dp else 12.dp)) {
         if (isWindows) {
@@ -96,6 +102,24 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
             }
         }
 
+        SettingsSection(title = "Subtítulos muxeados en la lista", isTablet = isTablet) {
+            SettingsGroup(isTablet = isTablet) {
+                SettingsSwitchRow(
+                    title = "Botón para consultar subtítulos",
+                    description = "Cada stream con enlace directo muestra un botón SUBS que lee su archivo y lista los idiomas incrustados. Nada se consulta solo.",
+                    checked = forkSettings.muxedSubtitleBadgeEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = ForkSettingsRepository::setMuxedSubtitleBadgeEnabled,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsNavigationRow(
+                    title = "Idiomas a mostrar",
+                    description = muxedSubtitleFilterLabel(forkSettings.muxedSubtitleLanguages),
+                    isTablet = isTablet,
+                    onClick = { showMuxedSubtitleLanguagesDialog = true },
+                )
+            }
+        }
         SettingsSection(title = "Continuar viendo", isTablet = isTablet) {
             SettingsGroup(isTablet = isTablet) {
                 SettingsSwitchRow(
@@ -306,4 +330,48 @@ private fun ForkSettingsSectionContent(isTablet: Boolean) {
             }
         }
     }
+
+    if (showMuxedSubtitleLanguagesDialog) {
+        DialogSurface(
+            onDismissRequest = { showMuxedSubtitleLanguagesDialog = false },
+            title = "Idiomas a mostrar",
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DialogOption(
+                    text = "Todos los idiomas",
+                    selected = forkSettings.muxedSubtitleLanguages.isEmpty(),
+                    onClick = ForkSettingsRepository::clearMuxedSubtitleLanguages,
+                )
+                MuxedSubtitleLanguageOptions.forEach { option ->
+                    DialogOption(
+                        text = option.label,
+                        selected = option.code in forkSettings.muxedSubtitleLanguages,
+                        role = Role.Checkbox,
+                        onClick = { ForkSettingsRepository.toggleMuxedSubtitleLanguage(option.code) },
+                    )
+                }
+            }
+
+            DialogButtons {
+                DialogButton(
+                    text = stringResource(Res.string.action_done),
+                    onClick = { showMuxedSubtitleLanguagesDialog = false },
+                )
+            }
+        }
+    }
+}
+
+private fun muxedSubtitleFilterLabel(selected: Set<String>): String {
+    if (selected.isEmpty()) return "Todos los idiomas"
+    return MuxedSubtitleLanguageOptions
+        .filter { it.code in selected }
+        .joinToString(", ") { it.label }
+        .ifBlank { selected.sorted().joinToString(", ") }
 }

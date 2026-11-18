@@ -12,6 +12,8 @@ internal actual object ForkSettingsStorage {
     private const val nextEpisodeVideoEnabledKey = "nuvio_fork_next_episode_video_prefetch_enabled"
     private const val nextEpisodeMinutesKey = "nuvio_fork_next_episode_prefetch_minutes"
     private const val nextEpisodeThumbnailHiddenKey = "nuvio_fork_next_episode_thumbnail_hidden"
+    private const val muxedSubtitleBadgeEnabledKey = "nuvio_fork_muxed_subtitle_badge_enabled"
+    private const val muxedSubtitleLanguagesKey = "nuvio_fork_muxed_subtitle_languages"
 
     private val defaults: NSUserDefaults
         get() = NSUserDefaults.standardUserDefaults
@@ -83,5 +85,19 @@ internal actual object ForkSettingsStorage {
 
     actual fun saveNextEpisodeThumbnailHidden(hidden: Boolean) {
         defaults.setBool(hidden, forKey = nextEpisodeThumbnailHiddenKey)
+    }
+
+    actual fun loadMuxedSubtitleBadgeEnabled(): Boolean? =
+        if (hasKey(muxedSubtitleBadgeEnabledKey)) defaults.boolForKey(muxedSubtitleBadgeEnabledKey) else null
+
+    actual fun saveMuxedSubtitleBadgeEnabled(enabled: Boolean) {
+        defaults.setBool(enabled, forKey = muxedSubtitleBadgeEnabledKey)
+    }
+
+    actual fun loadMuxedSubtitleLanguages(): String? =
+        if (hasKey(muxedSubtitleLanguagesKey)) defaults.stringForKey(muxedSubtitleLanguagesKey) else null
+
+    actual fun saveMuxedSubtitleLanguages(codes: String) {
+        defaults.setObject(codes, forKey = muxedSubtitleLanguagesKey)
     }
 }

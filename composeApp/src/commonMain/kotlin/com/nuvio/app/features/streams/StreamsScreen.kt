@@ -105,6 +105,7 @@ import com.nuvio.app.features.debrid.DirectDebridPlayableResult
 import com.nuvio.app.features.debrid.DirectDebridPlaybackResolver
 import com.nuvio.app.features.debrid.toastMessage
 import com.nuvio.app.features.details.MetaScreenBackgroundMode
+import com.nuvio.app.features.fork.ForkSettingsRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
@@ -792,6 +793,10 @@ internal fun StreamList(
         StreamBadgeSettingsRepository.ensureLoaded()
         StreamBadgeSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
+    val forkSettings by remember {
+        ForkSettingsRepository.ensureLoaded()
+        ForkSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
 
     // As on TV, picking another addon filter starts at the top of its results. Only a change of
     // filter does it, so the position kept when coming back from the player stays.
@@ -828,6 +833,8 @@ internal fun StreamList(
                             showFileSizeBadges = streamBadgeSettings.showFileSizeBadges,
                             showAddonLogo = streamBadgeSettings.showAddonLogo,
                             badgePlacement = streamBadgeSettings.badgePlacement,
+                            muxedSubtitleButtonEnabled = forkSettings.muxedSubtitleBadgeEnabled,
+                            muxedSubtitleLanguages = forkSettings.muxedSubtitleLanguages,
                             onClick = { onStreamSelected(shared.stream, resumePositionMs, resumeProgressFraction) },
                             outlined = true,
                         )
@@ -864,6 +871,8 @@ internal fun StreamList(
                             showFileSizeBadges = streamBadgeSettings.showFileSizeBadges,
                             showAddonLogo = streamBadgeSettings.showAddonLogo,
                             badgePlacement = streamBadgeSettings.badgePlacement,
+                            muxedSubtitleButtonEnabled = forkSettings.muxedSubtitleBadgeEnabled,
+                            muxedSubtitleLanguages = forkSettings.muxedSubtitleLanguages,
                             torrentNotSupportedText = torrentNotSupportedText,
                             fetchingText = fetchingText,
                             onStreamSelected = onStreamSelected,
@@ -946,6 +955,8 @@ private fun LazyListScope.streamSection(
     showFileSizeBadges: Boolean,
     showAddonLogo: Boolean,
     badgePlacement: StreamBadgePlacement,
+    muxedSubtitleButtonEnabled: Boolean,
+    muxedSubtitleLanguages: Set<String>,
     torrentNotSupportedText: String,
     fetchingText: String,
     onStreamSelected: (stream: StreamItem, resumePositionMs: Long?, resumeProgressFraction: Float?) -> Unit,
@@ -998,6 +1009,8 @@ private fun LazyListScope.streamSection(
                 showFileSizeBadges = showFileSizeBadges,
                 showAddonLogo = showAddonLogo,
                 badgePlacement = badgePlacement,
+                muxedSubtitleButtonEnabled = muxedSubtitleButtonEnabled,
+                muxedSubtitleLanguages = muxedSubtitleLanguages,
                 onClick = {
                     if (isSelectable) {
                         onStreamSelected(stream, resumePositionMs, resumeProgressFraction)
